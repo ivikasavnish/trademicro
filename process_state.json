@@ -1,0 +1,19 @@
+{
+    "trade_log.py": {
+        "pid": 704577,
+        "args": [
+            "KFINTECH",
+            "1",
+            "--diff",
+            ".1",
+            "--zag",
+            "1",
+            "--type",
+            "CNC",
+            "sonam"
+        ],
+        "status": "running",
+        "started_at": "2025-02-11T08:51:56.024187",
+        "command": "python3 trade_log.py KFINTECH 1 --diff .1 --zag 1 --type CNC sonam"
+    }
+}
