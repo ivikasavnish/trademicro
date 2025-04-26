@@ -43,6 +43,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    environment: prod
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     
     steps:
@@ -57,11 +58,21 @@ jobs:
     - name: Make binary executable
       run: chmod +x trademicro
         
+    - name: Set up SSH key
+      run: |
+        mkdir -p ~/.ssh
+        # Get server SSH key and add to known hosts
+        ssh-keyscan -t rsa ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+        # Save password to file for sshpass
+        echo "${{ secrets.SERVER_PASSWORD }}" > ~/.ssh/password.txt
+        chmod 600 ~/.ssh/password.txt
+        
     - name: Create server deployment script
       env:
-        POSTGRES_DSN: "${{ secrets.POSTGRES_DSN }}"
-        REDIS_URL: "${{ secrets.REDIS_URL }}"
-        SECRET_KEY: "${{ secrets.SECRET_KEY }}"
+        # Database and service credentials from prod environment
+        POSTGRES_DSN: ${{ secrets.POSTGRES_DSN }}
+        REDIS_URL: ${{ secrets.REDIS_URL }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY }}
       run: |
         # Create deployment script with environment variables
         cat > server_deploy.sh << EOF
@@ -193,26 +204,16 @@ jobs:
         
         chmod +x server_deploy.sh
         
-    - name: Deploy to server
-      uses: appleboy/scp-action@v0.1.4
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
-        port: 22
-        source: "trademicro,server_deploy.sh"
-        target: "/tmp"
-        debug: true
+    - name: Deploy using sshpass
+      run: |
+        # Install sshpass
+        sudo apt-get update
+        sudo apt-get install -y sshpass
         
-    - name: Execute deployment script
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USER }}
-        password: ${{ secrets.SSH_PASSWORD }}
-        port: 22
-        debug: true
-        script: |
-          cd /tmp
-          chmod +x server_deploy.sh
-          ./server_deploy.sh
+        # Copy files to server
+        echo "Copying files to server ${{ secrets.SERVER_HOST }}..."
+        sshpass -f ~/.ssh/password.txt scp -o StrictHostKeyChecking=no trademicro server_deploy.sh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/
+        
+        # Execute deployment script
+        echo "Executing deployment script on server..."
+        sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "cd /tmp && chmod +x server_deploy.sh && ./server_deploy.sh"
