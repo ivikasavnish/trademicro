@@ -18,10 +18,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: '1.21'
         
@@ -34,7 +34,7 @@ jobs:
       run: go test ./...
       
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: trademicro-binary
         path: trademicro
@@ -47,10 +47,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Download build artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: trademicro-binary
         
@@ -58,8 +58,13 @@ jobs:
       run: chmod +x trademicro
         
     - name: Create server deployment script
+      env:
+        POSTGRES_DSN: "${{ secrets.POSTGRES_DSN }}"
+        REDIS_URL: "${{ secrets.REDIS_URL }}"
+        SECRET_KEY: "${{ secrets.SECRET_KEY }}"
       run: |
-        cat > server_deploy.sh << 'EOF'
+        # Create deployment script with environment variables
+        cat > server_deploy.sh << EOF
         #!/bin/bash
         
         # TradeMicro API Server Deployment Script
@@ -68,9 +73,9 @@ jobs:
         # Configuration
         APP_DIR="/opt/trademicro"
         APP_PORT=8000
-        POSTGRES_DSN="$POSTGRES_DSN"
-        REDIS_URL="$REDIS_URL"
-        SECRET_KEY="$SECRET_KEY"
+        POSTGRES_DSN="${POSTGRES_DSN}"
+        REDIS_URL="${REDIS_URL}"
+        SECRET_KEY="${SECRET_KEY}"
         
         # Colors for output
         GREEN="\033[0;32m"
@@ -78,49 +83,49 @@ jobs:
         RED="\033[0;31m"
         NC="\033[0m" # No Color
         
-        echo -e "${GREEN}Starting TradeMicro API server deployment...${NC}"
+        echo -e "\${GREEN}Starting TradeMicro API server deployment...\${NC}"
         
         # Check if running as root
-        if [ "$(id -u)" -ne 0 ]; then
-            echo -e "${RED}This script must be run as root${NC}"
+        if [ "\$(id -u)" -ne 0 ]; then
+            echo -e "\${RED}This script must be run as root\${NC}"
             exit 1
         fi
         
         # Update system packages
-        echo -e "${YELLOW}Updating system packages...${NC}"
+        echo -e "\${YELLOW}Updating system packages...\${NC}"
         apt update && apt upgrade -y
         
         # Install Redis if not already installed
-        echo -e "${YELLOW}Installing Redis...${NC}"
+        echo -e "\${YELLOW}Installing Redis...\${NC}"
         apt install -y redis-server
         
         # Create application directory
-        echo -e "${YELLOW}Creating application directory...${NC}"
-        mkdir -p $APP_DIR
+        echo -e "\${YELLOW}Creating application directory...\${NC}"
+        mkdir -p \$APP_DIR
         
         # Check if the directory already has files
-        if [ "$(ls -A $APP_DIR)" ]; then
-            echo -e "${YELLOW}Directory $APP_DIR is not empty. Backing up existing files...${NC}"
-            BACKUP_DIR="${APP_DIR}_backup_$(date +%Y%m%d%H%M%S)"
-            mv $APP_DIR $BACKUP_DIR
-            mkdir -p $APP_DIR
+        if [ "\$(ls -A \$APP_DIR)" ]; then
+            echo -e "\${YELLOW}Directory \$APP_DIR is not empty. Backing up existing files...\${NC}"
+            BACKUP_DIR="\${APP_DIR}_backup_\$(date +%Y%m%d%H%M%S)"
+            mv \$APP_DIR \$BACKUP_DIR
+            mkdir -p \$APP_DIR
         fi
         
         # Copy the Go binary to the server
-        echo -e "${YELLOW}Copying application binary...${NC}"
-        cp ./trademicro $APP_DIR/
+        echo -e "\${YELLOW}Copying application binary...\${NC}"
+        cp ./trademicro \$APP_DIR/
         
         # Create environment file
-        echo -e "${YELLOW}Creating environment file...${NC}"
-        cat > $APP_DIR/.env << ENVEOF
-        POSTGRES_URL=$POSTGRES_DSN
-        REDIS_URL=$REDIS_URL
-        SECRET_KEY=$SECRET_KEY
-        PORT=$APP_PORT
+        echo -e "\${YELLOW}Creating environment file...\${NC}"
+        cat > \$APP_DIR/.env << ENVEOF
+        POSTGRES_URL=\$POSTGRES_DSN
+        REDIS_URL=\$REDIS_URL
+        SECRET_KEY=\$SECRET_KEY
+        PORT=\$APP_PORT
         ENVEOF
         
         # Create systemd service
-        echo -e "${YELLOW}Creating systemd service...${NC}"
+        echo -e "\${YELLOW}Creating systemd service...\${NC}"
         cat > /etc/systemd/system/trademicro.service << SERVICEEOF
         [Unit]
         Description=TradeMicro Go API
@@ -129,9 +134,9 @@ jobs:
         [Service]
         User=root
         Group=root
-        WorkingDirectory=$APP_DIR
-        EnvironmentFile=$APP_DIR/.env
-        ExecStart=$APP_DIR/trademicro
+        WorkingDirectory=\$APP_DIR
+        EnvironmentFile=\$APP_DIR/.env
+        ExecStart=\$APP_DIR/trademicro
         Restart=always
         RestartSec=5
         
@@ -140,27 +145,27 @@ jobs:
         SERVICEEOF
         
         # Enable and start service
-        echo -e "${YELLOW}Enabling and starting service...${NC}"
+        echo -e "\${YELLOW}Enabling and starting service...\${NC}"
         systemctl daemon-reload
         systemctl enable trademicro
         systemctl start trademicro
         
         # Configure Nginx
-        echo -e "${YELLOW}Installing and configuring Nginx...${NC}"
+        echo -e "\${YELLOW}Installing and configuring Nginx...\${NC}"
         apt install -y nginx
         
         cat > /etc/nginx/sites-available/trademicro << NGINXEOF
         server {
             listen 80;
-            server_name \$hostname;
+            server_name \\\$hostname;
         
             location / {
-                proxy_pass http://127.0.0.1:$APP_PORT;
+                proxy_pass http://127.0.0.1:\\\$APP_PORT;
                 proxy_http_version 1.1;
-                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Upgrade \\\$http_upgrade;
                 proxy_set_header Connection "upgrade";
-                proxy_set_header Host \$host;
-                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header Host \\\$host;
+                proxy_set_header X-Real-IP \\\$remote_addr;
             }
         }
         NGINXEOF
@@ -171,43 +176,39 @@ jobs:
         
         # Check if service is running
         if systemctl is-active --quiet trademicro; then
-            echo -e "${GREEN}TradeMicro API has been successfully deployed!${NC}"
-            SERVER_IP=$(hostname -I | awk '{print $1}')
-            echo -e "${GREEN}Your API is accessible at: http://$SERVER_IP${NC}"
+            echo -e "\${GREEN}TradeMicro API has been successfully deployed!\${NC}"
+            SERVER_IP=\$(hostname -I | awk '{print \$1}')
+            echo -e "\${GREEN}Your API is accessible at: http://\$SERVER_IP\${NC}"
             
-            echo -e "\n${YELLOW}To check service status:${NC}"
+            echo -e "\\n\${YELLOW}To check service status:\${NC}"
             echo -e "systemctl status trademicro"
             
-            echo -e "\n${YELLOW}To view logs:${NC}"
+            echo -e "\\n\${YELLOW}To view logs:\${NC}"
             echo -e "journalctl -u trademicro"
         else
-            echo -e "${RED}Deployment failed. Service is not running.${NC}"
-            echo -e "${YELLOW}Check logs with: journalctl -u trademicro${NC}"
+            echo -e "\${RED}Deployment failed. Service is not running.\${NC}"
+            echo -e "\${YELLOW}Check logs with: journalctl -u trademicro\${NC}"
         fi
         EOF
         
         chmod +x server_deploy.sh
-      env:
-        POSTGRES_DSN: ${{ secrets.POSTGRES_DSN }}
-        REDIS_URL: ${{ secrets.REDIS_URL }}
-        SECRET_KEY: ${{ secrets.SECRET_KEY }}
         
     - name: Deploy to server
-      uses: appleboy/scp-action@master
+      uses: appleboy/scp-action@v0.1.4
       with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
+        host: "${{ secrets.SERVER_HOST }}"
+        username: "${{ secrets.SERVER_USER }}"
+        password: "${{ secrets.SERVER_PASSWORD }}"
         port: 22
         source: "trademicro,server_deploy.sh"
         target: "/tmp"
         
     - name: Execute deployment script
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v1.0.0
       with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        password: ${{ secrets.SERVER_PASSWORD }}
+        host: "${{ secrets.SERVER_HOST }}"
+        username: "${{ secrets.SERVER_USER }}"
+        password: "${{ secrets.SERVER_PASSWORD }}"
         port: 22
         script: |
           cd /tmp
