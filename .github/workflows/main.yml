@@ -124,17 +124,19 @@ jobs:
         
         # Only update system packages and install services on first install
         if [ "\$FIRST_INSTALL" = true ]; then
-            # Update system packages
+            # Update system packages - with timeout and no prompt
             echo -e "\${YELLOW}Updating system packages...\${NC}"
-            apt update && apt upgrade -y
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -q
+            apt-get upgrade -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --allow-downgrades --allow-remove-essential --allow-change-held-packages
             
             # Install Redis if not already installed
             echo -e "\${YELLOW}Installing Redis...\${NC}"
-            apt install -y redis-server
+            apt-get install -q -y redis-server < /dev/null
             
             # Install Nginx if not already installed
             echo -e "\${YELLOW}Installing Nginx...\${NC}"
-            apt install -y nginx
+            apt-get install -q -y nginx < /dev/null
         fi
         
         # Create application directory if it doesn't exist
@@ -257,10 +259,29 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y sshpass
         
+        # Create SSH config with keepalive settings
+        mkdir -p ~/.ssh
+        cat > ~/.ssh/config << EOF
+        Host *
+          ServerAliveInterval 60
+          ServerAliveCountMax 10
+          TCPKeepAlive yes
+        EOF
+        chmod 600 ~/.ssh/config
+        
         # Copy files to server
         echo "Copying files to server ${{ secrets.SSH_HOST }}..."
         sshpass -f ~/.ssh/password.txt scp -o StrictHostKeyChecking=no trademicro server_deploy.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
         
-        # Execute deployment script
+        # Execute deployment script with nohup to prevent SSH timeouts
         echo "Executing deployment script on server..."
-        sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /tmp && chmod +x server_deploy.sh && ./server_deploy.sh"
+        sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /tmp && chmod +x server_deploy.sh && nohup ./server_deploy.sh > deploy.log 2>&1 &"
+        
+        # Wait a moment for the script to start
+        sleep 5
+        
+        # Follow the log file to see progress
+        echo "Showing deployment log (will timeout after 5 minutes)..."
+        timeout 300 sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "tail -f /tmp/deploy.log" || true
+        
+        echo "Deployment is running in the background. You can check the status later by connecting to the server."
