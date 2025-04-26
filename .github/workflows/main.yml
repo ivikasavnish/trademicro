@@ -58,19 +58,18 @@ jobs:
     - name: Make binary executable
       run: chmod +x trademicro
         
-    - name: Set up SSH key
+    - name: Set up SSH connection
       run: |
         mkdir -p ~/.ssh
-        # Get server SSH key and add to known hosts
-        ssh-keyscan -t rsa ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-        # Save password to file for sshpass
-        echo "${{ secrets.SERVER_PASSWORD }}" > ~/.ssh/password.txt
+        # Use existing SSH configuration from secrets
+        echo "${{ secrets.SSH_HOST }} ${{ secrets.SSH_KEY }}" >> ~/.ssh/known_hosts
+        echo "${{ secrets.SSH_PASSWORD }}" > ~/.ssh/password.txt
         chmod 600 ~/.ssh/password.txt
         
     - name: Create server deployment script
       env:
         # Database and service credentials from prod environment
-        POSTGRES_DSN: ${{ secrets.POSTGRES_DSN }}
+        POSTGRES_DSN: ${{ secrets.POSTGRES_URL }}
         REDIS_URL: ${{ secrets.REDIS_URL }}
         SECRET_KEY: ${{ secrets.SECRET_KEY }}
       run: |
@@ -211,9 +210,9 @@ jobs:
         sudo apt-get install -y sshpass
         
         # Copy files to server
-        echo "Copying files to server ${{ secrets.SERVER_HOST }}..."
-        sshpass -f ~/.ssh/password.txt scp -o StrictHostKeyChecking=no trademicro server_deploy.sh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/
+        echo "Copying files to server ${{ secrets.SSH_HOST }}..."
+        sshpass -f ~/.ssh/password.txt scp -o StrictHostKeyChecking=no trademicro server_deploy.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
         
         # Execute deployment script
         echo "Executing deployment script on server..."
-        sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "cd /tmp && chmod +x server_deploy.sh && ./server_deploy.sh"
+        sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /tmp && chmod +x server_deploy.sh && ./server_deploy.sh"
