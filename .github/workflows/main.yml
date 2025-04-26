@@ -101,42 +101,70 @@ jobs:
             exit 1
         fi
         
-        # Update system packages
-        echo -e "\${YELLOW}Updating system packages...\${NC}"
-        apt update && apt upgrade -y
+        # Check if this is a first-time installation or an update
+        FIRST_INSTALL=false
+        if [ ! -f "/etc/systemd/system/trademicro.service" ] || [ ! -d "\$APP_DIR" ]; then
+            FIRST_INSTALL=true
+            echo -e "\${YELLOW}First-time installation detected. Setting up all components...\${NC}"
+        else
+            echo -e "\${YELLOW}Existing installation detected. Performing update only...\${NC}"
+        fi
         
-        # Install Redis if not already installed
-        echo -e "\${YELLOW}Installing Redis...\${NC}"
-        apt install -y redis-server
+        # Only update system packages and install services on first install
+        if [ "\$FIRST_INSTALL" = true ]; then
+            # Update system packages
+            echo -e "\${YELLOW}Updating system packages...\${NC}"
+            apt update && apt upgrade -y
+            
+            # Install Redis if not already installed
+            echo -e "\${YELLOW}Installing Redis...\${NC}"
+            apt install -y redis-server
+            
+            # Install Nginx if not already installed
+            echo -e "\${YELLOW}Installing Nginx...\${NC}"
+            apt install -y nginx
+        fi
         
-        # Create application directory
-        echo -e "\${YELLOW}Creating application directory...\${NC}"
-        mkdir -p \$APP_DIR
-        
-        # Check if the directory already has files
-        if [ "\$(ls -A \$APP_DIR)" ]; then
-            echo -e "\${YELLOW}Directory \$APP_DIR is not empty. Backing up existing files...\${NC}"
-            BACKUP_DIR="\${APP_DIR}_backup_\$(date +%Y%m%d%H%M%S)"
-            mv \$APP_DIR \$BACKUP_DIR
+        # Create application directory if it doesn't exist
+        if [ ! -d "\$APP_DIR" ]; then
+            echo -e "\${YELLOW}Creating application directory...\${NC}"
             mkdir -p \$APP_DIR
+        fi
+        
+        # Stop the service before updating binary
+        if systemctl is-active --quiet trademicro; then
+            echo -e "\${YELLOW}Stopping TradeMicro service...\${NC}"
+            systemctl stop trademicro
+        fi
+        
+        # Backup the existing binary if it exists
+        if [ -f "\$APP_DIR/trademicro" ]; then
+            echo -e "\${YELLOW}Backing up existing binary...\${NC}"
+            mv "\$APP_DIR/trademicro" "\$APP_DIR/trademicro.bak.\$(date +%Y%m%d%H%M%S)"
         fi
         
         # Copy the Go binary to the server
         echo -e "\${YELLOW}Copying application binary...\${NC}"
         cp ./trademicro \$APP_DIR/
+        chmod +x \$APP_DIR/trademicro
         
-        # Create environment file
-        echo -e "\${YELLOW}Creating environment file...\${NC}"
-        cat > \$APP_DIR/.env << ENVEOF
+        # Create or update environment file
+        if [ ! -f "\$APP_DIR/.env" ] || [ "\$FIRST_INSTALL" = true ]; then
+            echo -e "\${YELLOW}Creating environment file...\${NC}"
+            cat > \$APP_DIR/.env << ENVEOF
         POSTGRES_URL=\$POSTGRES_DSN
         REDIS_URL=\$REDIS_URL
         SECRET_KEY=\$SECRET_KEY
         PORT=\$APP_PORT
         ENVEOF
+        else
+            echo -e "\${YELLOW}Using existing environment file...\${NC}"
+        fi
         
-        # Create systemd service
-        echo -e "\${YELLOW}Creating systemd service...\${NC}"
-        cat > /etc/systemd/system/trademicro.service << SERVICEEOF
+        # Create systemd service if it doesn't exist
+        if [ ! -f "/etc/systemd/system/trademicro.service" ] || [ "\$FIRST_INSTALL" = true ]; then
+            echo -e "\${YELLOW}Creating systemd service...\${NC}"
+            cat > /etc/systemd/system/trademicro.service << SERVICEEOF
         [Unit]
         Description=TradeMicro Go API
         After=network.target
@@ -153,18 +181,23 @@ jobs:
         [Install]
         WantedBy=multi-user.target
         SERVICEEOF
+            
+            # Enable service on first install
+            echo -e "\${YELLOW}Enabling service...\${NC}"
+            systemctl enable trademicro
+        else
+            echo -e "\${YELLOW}Using existing systemd service configuration...\${NC}"
+        fi
         
-        # Enable and start service
-        echo -e "\${YELLOW}Enabling and starting service...\${NC}"
+        # Reload systemd and start service
+        echo -e "\${YELLOW}Reloading systemd and starting service...\${NC}"
         systemctl daemon-reload
-        systemctl enable trademicro
         systemctl start trademicro
         
-        # Configure Nginx
-        echo -e "\${YELLOW}Installing and configuring Nginx...\${NC}"
-        apt install -y nginx
-        
-        cat > /etc/nginx/sites-available/trademicro << NGINXEOF
+        # Configure Nginx if it's first install
+        if [ ! -f "/etc/nginx/sites-available/trademicro" ] || [ "\$FIRST_INSTALL" = true ]; then
+            echo -e "\${YELLOW}Configuring Nginx...\${NC}"
+            cat > /etc/nginx/sites-available/trademicro << NGINXEOF
         server {
             listen 80;
             server_name \\\$hostname;
@@ -179,14 +212,17 @@ jobs:
             }
         }
         NGINXEOF
-        
-        # Enable Nginx site
-        ln -sf /etc/nginx/sites-available/trademicro /etc/nginx/sites-enabled/
-        nginx -t && systemctl restart nginx
+            
+            # Enable Nginx site
+            ln -sf /etc/nginx/sites-available/trademicro /etc/nginx/sites-enabled/
+            nginx -t && systemctl restart nginx
+        else
+            echo -e "\${YELLOW}Using existing Nginx configuration...\${NC}"
+        fi
         
         # Check if service is running
         if systemctl is-active --quiet trademicro; then
-            echo -e "\${GREEN}TradeMicro API has been successfully deployed!\${NC}"
+            echo -e "\${GREEN}TradeMicro API has been successfully \${FIRST_INSTALL:+installed:updated}!\${NC}"
             SERVER_IP=\$(hostname -I | awk '{print \$1}')
             echo -e "\${GREEN}Your API is accessible at: http://\$SERVER_IP\${NC}"
             
