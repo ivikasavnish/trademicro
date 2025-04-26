@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+redis>=4.2.0
+python-jose
+passlib[bcrypt]
+pandas
+requests

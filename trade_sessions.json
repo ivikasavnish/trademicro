@@ -1,0 +1,32 @@
+[
+  {
+    "symbol": "HINDZINC",
+    "unit": 1,
+    "diff": 0.1,
+    "zag": 2,
+    "type": "MTF",
+    "user": "sonam",
+    "status": "running",
+    "id": 1
+  },
+  {
+    "symbol": "HINDZINC",
+    "unit": 1,
+    "diff": 0.1,
+    "zag": 2,
+    "type": "MTF",
+    "user": "sonam",
+    "status": "running",
+    "id": 2
+  },
+  {
+    "symbol": "HINDZINC",
+    "unit": 1,
+    "diff": 0.1,
+    "zag": 2,
+    "type": "MTF",
+    "user": "sonam",
+    "status": "running",
+    "id": 3
+  }
+]
