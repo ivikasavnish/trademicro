@@ -1,0 +1,150 @@
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [ master-server ]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCE_INSTANCE: ${{ secrets.GCP_INSTANCE_NAME }}
+  GCE_INSTANCE_ZONE: ${{ secrets.GCP_ZONE }}
+  
+jobs:
+  build:
+    name: Build Go Binary
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache: true
+        
+    - name: Build
+      run: |
+        go build -v -o trademicro
+        
+    - name: Upload binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: trademicro-binary
+        path: trademicro
+        
+  deploy:
+    name: Deploy to GCP
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Download binary
+      uses: actions/download-artifact@v3
+      with:
+        name: trademicro-binary
+        
+    - name: Setup gcloud CLI
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        export_default_credentials: true
+        
+    - name: Create deployment scripts
+      env:
+        POSTGRES_DSN: ${{ secrets.POSTGRES_URL }}
+        REDIS_URL: ${{ secrets.REDIS_URL }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      run: |
+        # Create a server setup script for first-time installation
+        cat > server_setup.sh << 'EOF'
+        #!/bin/bash
+        
+        # TradeMicro API Server Setup Script
+        
+        # Configuration
+        APP_DIR="/opt/trademicro"
+        APP_PORT=8000
+        
+        # Create application directory
+        mkdir -p $APP_DIR
+        
+        # Copy the binary
+        cp ./trademicro $APP_DIR/
+        chmod +x $APP_DIR/trademicro
+        
+        # Create environment file
+        cat > $APP_DIR/.env << ENVEOF
+        POSTGRES_URL=${POSTGRES_DSN}
+        REDIS_URL=${REDIS_URL}
+        SECRET_KEY=${SECRET_KEY}
+        PORT=${APP_PORT}
+        ENVEOF
+        
+        # Create systemd service
+        cat > /etc/systemd/system/trademicro.service << SERVICEEOF
+        [Unit]
+        Description=TradeMicro Go API
+        After=network.target
+        
+        [Service]
+        User=root
+        Group=root
+        WorkingDirectory=$APP_DIR
+        EnvironmentFile=$APP_DIR/.env
+        ExecStart=$APP_DIR/trademicro
+        Restart=always
+        RestartSec=5
+        
+        [Install]
+        WantedBy=multi-user.target
+        SERVICEEOF
+        
+        # Enable and start service
+        systemctl daemon-reload
+        systemctl enable trademicro
+        systemctl start trademicro
+        
+        echo "TradeMicro API has been set up successfully!"
+        EOF
+        chmod +x server_setup.sh
+        
+    - name: Check if first deployment
+      id: check-deployment
+      run: |
+        # Check if this is a first-time deployment
+        FIRST_DEPLOY=$(gcloud compute ssh --zone ${{ env.GCE_INSTANCE_ZONE }} ${{ env.GCE_INSTANCE }} --command="test -f /opt/trademicro/trademicro || echo 'first'" || echo "first")
+        if [[ $FIRST_DEPLOY == *"first"* ]]; then
+          echo "first_deploy=true" >> $GITHUB_OUTPUT
+        else
+          echo "first_deploy=false" >> $GITHUB_OUTPUT
+        fi
+      
+    - name: Deploy to GCP instance (First-time)
+      if: steps.check-deployment.outputs.first_deploy == 'true'
+      run: |
+        echo "Performing first-time deployment..."
+        
+        # Copy binary and setup script to instance
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} trademicro ${{ env.GCE_INSTANCE }}:~/
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} server_setup.sh ${{ env.GCE_INSTANCE }}:~/
+        
+        # Execute setup script
+        gcloud compute ssh --zone ${{ env.GCE_INSTANCE_ZONE }} ${{ env.GCE_INSTANCE }} --command="chmod +x ~/server_setup.sh && sudo ~/server_setup.sh"
+        
+    - name: Deploy to GCP instance (Update only)
+      if: steps.check-deployment.outputs.first_deploy == 'false'
+      run: |
+        echo "Performing binary update only..."
+        
+        # Copy binary to instance
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} trademicro ${{ env.GCE_INSTANCE }}:~/
+        
+        # Update binary and restart service
+        gcloud compute ssh --zone ${{ env.GCE_INSTANCE_ZONE }} ${{ env.GCE_INSTANCE }} --command="sudo systemctl stop trademicro && sudo cp ~/trademicro /opt/trademicro/ && sudo chmod +x /opt/trademicro/trademicro && sudo systemctl start trademicro"
