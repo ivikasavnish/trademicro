@@ -87,55 +87,55 @@ jobs:
       run: |
         # Create a simple server setup script for first-time installation
         cat > server_setup.sh << 'EOF'
-#!/bin/bash
-
-# TradeMicro API Server Setup Script
-
-# Configuration
-APP_DIR="/opt/trademicro"
-APP_PORT=8000
-
-# Create application directory
-mkdir -p $APP_DIR
-
-# Copy the binary
-cp ./trademicro $APP_DIR/
-chmod +x $APP_DIR/trademicro
-
-# Create environment file
-cat > $APP_DIR/.env << ENVEOF
-POSTGRES_URL=${POSTGRES_DSN}
-REDIS_URL=${REDIS_URL}
-SECRET_KEY=${SECRET_KEY}
-PORT=${APP_PORT}
-ENVEOF
-
-# Create systemd service
-cat > /etc/systemd/system/trademicro.service << SERVICEEOF
-[Unit]
-Description=TradeMicro Go API
-After=network.target
-
-[Service]
-User=root
-Group=root
-WorkingDirectory=$APP_DIR
-EnvironmentFile=$APP_DIR/.env
-ExecStart=$APP_DIR/trademicro
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
-
-# Enable and start service
-systemctl daemon-reload
-systemctl enable trademicro
-systemctl start trademicro
-
-echo "TradeMicro API has been set up successfully!"
-EOF
+        #!/bin/bash
+        
+        # TradeMicro API Server Setup Script
+        
+        # Configuration
+        APP_DIR="/opt/trademicro"
+        APP_PORT=8000
+        
+        # Create application directory
+        mkdir -p $APP_DIR
+        
+        # Copy the binary
+        cp ./trademicro $APP_DIR/
+        chmod +x $APP_DIR/trademicro
+        
+        # Create environment file
+        cat > $APP_DIR/.env << ENVEOF
+        POSTGRES_URL=${POSTGRES_DSN}
+        REDIS_URL=${REDIS_URL}
+        SECRET_KEY=${SECRET_KEY}
+        PORT=${APP_PORT}
+        ENVEOF
+        
+        # Create systemd service
+        cat > /etc/systemd/system/trademicro.service << SERVICEEOF
+        [Unit]
+        Description=TradeMicro Go API
+        After=network.target
+        
+        [Service]
+        User=root
+        Group=root
+        WorkingDirectory=$APP_DIR
+        EnvironmentFile=$APP_DIR/.env
+        ExecStart=$APP_DIR/trademicro
+        Restart=always
+        RestartSec=5
+        
+        [Install]
+        WantedBy=multi-user.target
+        SERVICEEOF
+        
+        # Enable and start service
+        systemctl daemon-reload
+        systemctl enable trademicro
+        systemctl start trademicro
+        
+        echo "TradeMicro API has been set up successfully!"
+        EOF
         cat > server_deploy.sh << EOF
         #!/bin/bash
         
@@ -332,8 +332,8 @@ EOF
         if [ "$FIRST_DEPLOY" = "true" ]; then
           # First-time deployment - copy and execute full deployment script
           echo "Performing first-time deployment..."
-          sshpass -f ~/.ssh/password.txt scp -o StrictHostKeyChecking=no server_deploy.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
-          sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /tmp && chmod +x server_deploy.sh && ./server_deploy.sh"
+          sshpass -f ~/.ssh/password.txt scp -o StrictHostKeyChecking=no server_setup.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+          sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /tmp && chmod +x server_setup.sh && sudo ./server_setup.sh"
         else
           # Update deployment - just update the binary
           echo "Performing binary update only..."
