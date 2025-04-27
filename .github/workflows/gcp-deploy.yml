@@ -57,18 +57,17 @@ jobs:
     # Create service account key file from secret
     - name: Create service account key file
       run: |
-        echo "$GCP_SA_KEY" > /tmp/service-account-key.json
-        cat /tmp/service-account-key.json
-      env:
-        GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        echo '${{ secrets.GCP_SA_KEY }}' > /tmp/service-account-key.json
+        # Verify the file is valid JSON
+        jq . /tmp/service-account-key.json || { echo "Error: Invalid JSON in service account key file"; exit 1; }
+      shell: bash
       
     # Authenticate with Google Cloud
     - name: Authenticate with Google Cloud
       run: |
         gcloud auth activate-service-account --key-file=/tmp/service-account-key.json
-        gcloud config set project "$GCP_PROJECT_ID"
-      env:
-        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        gcloud config set project '${{ secrets.GCP_PROJECT_ID }}'
+      shell: bash
         
     # gcloud CLI is already installed by the setup-gcloud action
         
