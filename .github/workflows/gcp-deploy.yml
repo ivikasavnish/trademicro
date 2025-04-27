@@ -220,20 +220,49 @@ jobs:
       run: |
         echo "Performing first-time deployment..."
         
-        # Copy binary and setup script to instance
-        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} trademicro ${{ env.GCE_INSTANCE }}:~/
-        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} server_setup.sh ${{ env.GCE_INSTANCE }}:~/
+        # Copy binary and setup script to instance using more reliable method
+        echo "Copying files to instance..."
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} trademicro ${{ env.GCE_INSTANCE }}:/tmp/ --quiet
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} server_setup.sh ${{ env.GCE_INSTANCE }}:/tmp/ --quiet
         
-        # Execute setup script
-        gcloud compute ssh --zone ${{ env.GCE_INSTANCE_ZONE }} ${{ env.GCE_INSTANCE }} --command="chmod +x ~/server_setup.sh && sudo ~/server_setup.sh"
+        # Create a simple wrapper script to execute the setup
+        cat > execute_setup.sh << 'EOF'
+        #!/bin/bash
+        # Simple wrapper to execute the setup script
+        chmod +x /tmp/server_setup.sh
+        cd /tmp
+        ./server_setup.sh
+        echo "Setup completed."
+        EOF
+        
+        # Copy and execute the wrapper script
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} execute_setup.sh ${{ env.GCE_INSTANCE }}:/tmp/ --quiet
+        
+        # Execute setup script with shorter command
+        echo "Executing setup script..."
+        gcloud compute ssh --zone ${{ env.GCE_INSTANCE_ZONE }} ${{ env.GCE_INSTANCE }} --command="sudo bash /tmp/execute_setup.sh" --quiet
         
     - name: Deploy to GCP instance (Update only)
       if: steps.check-deployment.outputs.first_deploy == 'false'
       run: |
         echo "Performing binary update only..."
         
-        # Copy binary to instance
-        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} trademicro ${{ env.GCE_INSTANCE }}:~/
+        # Create a simple update script
+        cat > update_binary.sh << 'EOF'
+        #!/bin/bash
+        # Simple script to update the TradeMicro binary
+        systemctl stop trademicro
+        cp /tmp/trademicro /opt/trademicro/
+        chmod +x /opt/trademicro/trademicro
+        systemctl start trademicro
+        echo "Binary updated and service restarted."
+        EOF
         
-        # Update binary and restart service
-        gcloud compute ssh --zone ${{ env.GCE_INSTANCE_ZONE }} ${{ env.GCE_INSTANCE }} --command="sudo systemctl stop trademicro && sudo cp ~/trademicro /opt/trademicro/ && sudo chmod +x /opt/trademicro/trademicro && sudo systemctl start trademicro"
+        # Use gcloud to copy files (more reliable than scp)
+        echo "Copying binary to instance..."
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} trademicro ${{ env.GCE_INSTANCE }}:/tmp/ --quiet
+        gcloud compute scp --zone ${{ env.GCE_INSTANCE_ZONE }} update_binary.sh ${{ env.GCE_INSTANCE }}:/tmp/ --quiet
+        
+        # Execute update script with shorter command
+        echo "Updating binary..."
+        gcloud compute ssh --zone ${{ env.GCE_INSTANCE_ZONE }} ${{ env.GCE_INSTANCE }} --command="sudo bash /tmp/update_binary.sh" --quiet
