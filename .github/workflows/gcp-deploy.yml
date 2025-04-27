@@ -49,12 +49,43 @@ jobs:
       with:
         name: trademicro-binary
         
-    - name: Setup gcloud CLI
-      uses: google-github-actions/setup-gcloud@v1
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
       with:
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        
+    - name: Setup gcloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
-        export_default_credentials: true
+        
+    - name: Add SSH key to GCP VM
+      run: |
+        # Create SSH key deployment script
+        cat > deploy_ssh_key.sh << 'EOF'
+        #!/bin/bash
+        
+        # Script to add SSH key to Google Cloud VM instance
+        
+        # Variables
+        SSH_KEY_CONTENT="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCvRoU3du0C6+uzymAhnhjCUXknU+T4SRV5MACWidc3vLSwr9NgsWMv2h4rVRULNQO5oIBFzCtZazLG81evlOITnROT5ySa/o7LIStth3G2XbQXV058f0gNl/+aUr0LxWf8D3jrx69VfFwmfFWeO4Y9PuaUD90aB1HObPNEcSm1xawKCvE/ctA48WRqwc/6fTZDoh5RaM93Iv+3X85/1ZfDvXr1XU4QJzyGezODh9VwfTkbpK8SYnoov9uaYCfVhV0gecPnTzHfjRbJe/sGVswzI7Fr27uh872+WCpbren1ptyapteSanX+ZEh1CVgZWSGEqGvnMbCIxFDCW3hZcVkIbbRUzydX+xMXbKoyaWhquTD0UzDQFOCRxrAhNnJwPCKDvyEuqDw4RDCiCOGB+hcoQ7HF5cxeigl9grL7IT4eyodszEbSGVX9EPw3Edlb0tYx0BdMmdY1u++RB2a4m9O0wuRw1IRWX4+B3PC5yRi3CWPmZtrnmLXH78HvO5YttfE="
+        USERNAME="vikasavnish"
+        
+        # Format the key with username
+        FORMATTED_KEY="$USERNAME:$SSH_KEY_CONTENT"
+        
+        # Add the SSH key to the instance metadata
+        gcloud compute instances add-metadata "$GCE_INSTANCE" \
+            --project="$PROJECT_ID" \
+            --zone="$GCE_INSTANCE_ZONE" \
+            --metadata="ssh-keys=$FORMATTED_KEY"
+        
+        echo "SSH key has been added to $GCE_INSTANCE"
+        EOF
+        chmod +x deploy_ssh_key.sh
+        
+        # Execute the script
+        ./deploy_ssh_key.sh
         
     - name: Create deployment scripts
       env:

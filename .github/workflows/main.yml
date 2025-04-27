@@ -78,6 +78,31 @@ jobs:
         echo "${{ secrets.SSH_PASSWORD }}" > ~/.ssh/password.txt
         chmod 600 ~/.ssh/password.txt
         
+    - name: Add SSH key to server
+      run: |
+        # Create SSH key deployment script
+        cat > deploy_ssh_key.sh << 'EOF'
+        #!/bin/bash
+        
+        # Script to add SSH key to server
+        
+        # Variables
+        SSH_KEY_CONTENT="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCvRoU3du0C6+uzymAhnhjCUXknU+T4SRV5MACWidc3vLSwr9NgsWMv2h4rVRULNQO5oIBFzCtZazLG81evlOITnROT5ySa/o7LIStth3G2XbQXV058f0gNl/+aUr0LxWf8D3jrx69VfFwmfFWeO4Y9PuaUD90aB1HObPNEcSm1xawKCvE/ctA48WRqwc/6fTZDoh5RaM93Iv+3X85/1ZfDvXr1XU4QJzyGezODh9VwfTkbpK8SYnoov9uaYCfVhV0gecPnTzHfjRbJe/sGVswzI7Fr27uh872+WCpbren1ptyapteSanX+ZEh1CVgZWSGEqGvnMbCIxFDCW3hZcVkIbbRUzydX+xMXbKoyaWhquTD0UzDQFOCRxrAhNnJwPCKDvyEuqDw4RDCiCOGB+hcoQ7HF5cxeigl9grL7IT4eyodszEbSGVX9EPw3Edlb0tYx0BdMmdY1u++RB2a4m9O0wuRw1IRWX4+B3PC5yRi3CWPmZtrnmLXH78HvO5YttfE="
+        USERNAME="vikasavnish"
+        
+        # Format the key with username
+        FORMATTED_KEY="$USERNAME:$SSH_KEY_CONTENT"
+        
+        # Add the SSH key to the authorized_keys file on the server
+        sshpass -f ~/.ssh/password.txt ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "mkdir -p ~/.ssh && echo '$FORMATTED_KEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+        
+        echo "SSH key has been added to the server"
+        EOF
+        chmod +x deploy_ssh_key.sh
+        
+        # Execute the script
+        ./deploy_ssh_key.sh
+        
     - name: Create deployment scripts
       env:
         # Database and service credentials from prod environment
@@ -174,19 +199,29 @@ jobs:
         
         # Only update system packages and install services on first install
         if [ "\$FIRST_INSTALL" = true ]; then
-            # Update system packages - with timeout and no prompt
-            echo -e "\${YELLOW}Updating system packages...\${NC}"
+            # Minimal update for smaller machine
+            echo -e "\${YELLOW}Installing only essential packages...\${NC}"
             export DEBIAN_FRONTEND=noninteractive
-            apt-get update -q
-            apt-get upgrade -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --allow-downgrades --allow-remove-essential --allow-change-held-packages
+            # Only install nginx if not already installed
+            if ! command -v nginx &> /dev/null; then
+                apt-get update -y --no-install-recommends
+                apt-get install -y --no-install-recommends nginx
+            fi
             
-            # Install Redis if not already installed
-            echo -e "\${YELLOW}Installing Redis...\${NC}"
-            apt-get install -q -y redis-server < /dev/null
-            
-            # Install Nginx if not already installed
-            echo -e "\${YELLOW}Installing Nginx...\${NC}"
-            apt-get install -q -y nginx < /dev/null
+            # Check if Redis is needed and install only if required
+            if [[ "$REDIS_URL" == *"localhost"* || "$REDIS_URL" == *"127.0.0.1"* ]]; then
+                echo -e "\${YELLOW}Installing Redis (minimal)...\${NC}"
+                apt-get install -y --no-install-recommends redis-server
+                # Configure Redis to use less memory
+                if [ -f "/etc/redis/redis.conf" ]; then
+                    sed -i 's/^maxmemory .*/maxmemory 64mb/' /etc/redis/redis.conf
+                    sed -i 's/^# maxmemory-policy .*/maxmemory-policy allkeys-lru/' /etc/redis/redis.conf
+                fi
+                systemctl enable redis-server
+            else
+                echo -e "\${YELLOW}Skipping Redis installation (using external Redis)...\${NC}"
+            fi           
+            # Nginx is already handled in the previous step
         fi
         
         # Create application directory if it doesn't exist
@@ -241,6 +276,11 @@ jobs:
         ExecStart=\$APP_DIR/trademicro
         Restart=always
         RestartSec=5
+        # Resource limits for smaller machine
+        MemoryLimit=128M
+        CPUQuota=30%
+        IOWeight=100
+        OOMScoreAdjust=-100
         
         [Install]
         WantedBy=multi-user.target
@@ -261,18 +301,27 @@ jobs:
         # Configure Nginx if it's first install
         if [ ! -f "/etc/nginx/sites-available/trademicro" ] || [ "\$FIRST_INSTALL" = true ]; then
             echo -e "\${YELLOW}Configuring Nginx...\${NC}"
+            # Create a lightweight Nginx config for smaller machines
             cat > /etc/nginx/sites-available/trademicro << NGINXEOF
         server {
             listen 80;
-            server_name \\\$hostname;
-        
+            server_name \$hostname;
+            access_log off;
+            error_log /var/log/nginx/error.log crit;
+            
+            # Buffer size optimizations
+            client_body_buffer_size 10k;
+            client_header_buffer_size 1k;
+            client_max_body_size 8m;
+            
             location / {
-                proxy_pass http://127.0.0.1:\\\$APP_PORT;
+                proxy_pass http://127.0.0.1:\$APP_PORT;
                 proxy_http_version 1.1;
-                proxy_set_header Upgrade \\\$http_upgrade;
+                proxy_set_header Upgrade \$http_upgrade;
                 proxy_set_header Connection "upgrade";
-                proxy_set_header Host \\\$host;
-                proxy_set_header X-Real-IP \\\$remote_addr;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_buffers 4 16k;
             }
         }
         NGINXEOF
