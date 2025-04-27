@@ -1,0 +1,27 @@
+# Ignore service account key files
+*service-account*.json
+
+# Ignore environment files
+.env
+*.env
+
+# Ignore SSH keys
+*.pem
+*.key
+
+# Ignore logs
+*.log
+logs/
+
+# Ignore compiled binaries
+trademicro
+
+# Ignore OS specific files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
