@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCE_INSTANCE: "instance-20250422-132526" # Micro VM instance
   GCE_INSTANCE_ZONE: "asia-south1-c"
   
@@ -49,16 +48,29 @@ jobs:
       with:
         name: trademicro-binary
         
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v2
+    # Set up gcloud CLI
+    - name: Set up gcloud CLI
+      uses: google-github-actions/setup-gcloud@v1
       with:
-        credentials_json: '${{ secrets.GCP_SA_KEY }}'
-        # No need to specify service_account_email as it's included in the credentials_json
+        version: 'latest'
         
-    - name: Setup gcloud CLI
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
+    # Create service account key file from secret
+    - name: Create service account key file
+      run: |
+        echo "$GCP_SA_KEY" > /tmp/service-account-key.json
+        cat /tmp/service-account-key.json
+      env:
+        GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      
+    # Authenticate with Google Cloud
+    - name: Authenticate with Google Cloud
+      run: |
+        gcloud auth activate-service-account --key-file=/tmp/service-account-key.json
+        gcloud config set project "$GCP_PROJECT_ID"
+      env:
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        
+    # gcloud CLI is already installed by the setup-gcloud action
         
     - name: Add SSH key to GCP VM
       run: |
@@ -77,7 +89,7 @@ jobs:
         
         # Add the SSH key to the instance metadata
         gcloud compute instances add-metadata "$GCE_INSTANCE" \
-            --project="$PROJECT_ID" \
+            --project="$GCP_PROJECT_ID" \
             --zone="$GCE_INSTANCE_ZONE" \
             --metadata="ssh-keys=$FORMATTED_KEY"
         
@@ -85,8 +97,12 @@ jobs:
         EOF
         chmod +x deploy_ssh_key.sh
         
-        # Execute the script
-        ./deploy_ssh_key.sh
+        # Execute the script with environment variables
+        GCP_PROJECT_ID="$GCP_PROJECT_ID" GCE_INSTANCE="$GCE_INSTANCE" GCE_INSTANCE_ZONE="$GCE_INSTANCE_ZONE" ./deploy_ssh_key.sh
+      env:
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        GCE_INSTANCE: "instance-20250422-132526"
+        GCE_INSTANCE_ZONE: "asia-south1-c"
         
     - name: Create deployment scripts
       env:
