@@ -17,6 +17,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	"github.com/vikasavnish/trademicro/api"
 )
 
 // Global variables
@@ -440,13 +442,55 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+// ServerConfig represents the configuration for different server types
+type ServerConfig struct {
+	IsMicro      bool   // Whether this is the micro instance (frontend API)
+	WorkerHost   string // The host of the worker instance for long-running tasks
+	WorkerUser   string // The user for SSH connections to the worker
+	WorkerSSHKey string // Path to the SSH key for worker connections
+}
+
+// Initialize server configuration based on environment variables
+func initServerConfig() ServerConfig {
+	// Determine if this is the micro instance based on environment variable or hostname
+	hostname, _ := os.Hostname()
+	isMicro := os.Getenv("SERVER_ROLE") == "micro" || hostname == "instance-20250422-132526"
+
+	// Get worker configuration
+	workerHost := os.Getenv("WORKER_HOST")
+	if workerHost == "" {
+		workerHost = "instance-20250416-112838" // Default to the n1-highcpu-4 instance
+	}
+
+	workerUser := os.Getenv("WORKER_USER")
+	if workerUser == "" {
+		workerUser = "root" // Default user
+	}
+
+	workerSSHKey := os.Getenv("WORKER_SSH_KEY")
+	if workerSSHKey == "" {
+		// Default to SSH key in the app directory
+		workerSSHKey = "/opt/trademicro/.ssh/worker_key"
+	}
+
+	return ServerConfig{
+		IsMicro:      isMicro,
+		WorkerHost:   workerHost,
+		WorkerUser:   workerUser,
+		WorkerSSHKey: workerSSHKey,
+	}
+}
+
 func main() {
+	// Initialize server configuration
+	config := initServerConfig()
+
 	// Create a new router
 	r := mux.NewRouter()
 
 	// Set up CORS
 	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowedOrigins:   []string{"*"}, // Allow all origins for API access
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -482,6 +526,24 @@ func main() {
 	// User routes
 	apiRouter.HandleFunc("/users", getUsersHandler).Methods("GET")
 	apiRouter.HandleFunc("/users", createUserHandler).Methods("POST")
+
+	// Initialize task management if this is the micro instance
+	if config.IsMicro {
+		log.Println("Initializing as FRONTEND micro instance with task management capabilities")
+		
+		// Create task handler with worker configuration
+		taskHandler := api.NewTaskHandler()
+		
+		// Register task management routes
+		taskHandler.RegisterRoutes(apiRouter)
+		
+		// Initialize task cleanup
+		taskHandler.InitTaskCleanup()
+		
+		log.Printf("Task management initialized with worker: %s@%s", config.WorkerUser, config.WorkerHost)
+	} else {
+		log.Println("Initializing as WORKER instance for handling long-running tasks")
+	}
 
 	// Start the WebSocket broadcast handler
 	go handleBroadcasts()

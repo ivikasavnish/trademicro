@@ -7,8 +7,8 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GCE_INSTANCE: ${{ secrets.GCP_INSTANCE_NAME }}
-  GCE_INSTANCE_ZONE: ${{ secrets.GCP_ZONE }}
+  GCE_INSTANCE: "instance-20250422-132526" # Micro VM instance
+  GCE_INSTANCE_ZONE: "asia-south1-c"
   
 jobs:
   build:
@@ -17,7 +17,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -30,7 +30,7 @@ jobs:
         go build -v -o trademicro
         
     - name: Upload binary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: trademicro-binary
         path: trademicro
@@ -42,10 +42,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Download binary
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: trademicro-binary
         
@@ -105,18 +105,76 @@ jobs:
         
         # Create application directory
         mkdir -p $APP_DIR
+        mkdir -p $APP_DIR/scripts
+        mkdir -p $APP_DIR/api
+        mkdir -p $APP_DIR/logs/tasks
+        mkdir -p $APP_DIR/.ssh
         
-        # Copy the binary
+        # Copy the binary and scripts
         cp ./trademicro $APP_DIR/
         chmod +x $APP_DIR/trademicro
         
-        # Create environment file
+        # Create environment file with both database credentials and micro instance configuration
         cat > $APP_DIR/.env << ENVEOF
         POSTGRES_URL=${POSTGRES_DSN}
         REDIS_URL=${REDIS_URL}
         SECRET_KEY=${SECRET_KEY}
         PORT=${APP_PORT}
+        SERVER_ROLE=micro
+        WORKER_HOST=instance-20250416-112838
+        WORKER_USER=root
+        WORKER_SSH_KEY=$APP_DIR/.ssh/worker_key
+        TASK_LOG_DIR=$APP_DIR/logs/tasks
         ENVEOF
+        
+        # Copy the setup script
+        cat > $APP_DIR/scripts/setup_micro_architecture.sh << 'SETUPEOF'
+        #!/bin/bash
+
+        # TradeMicro Micro-Worker Architecture Setup Script
+        # This script configures the micro instance as a frontend API server
+        # and sets up SSH communication with the worker instance for long-running tasks
+
+        # Colors for output
+        GREEN="\033[0;32m"
+        YELLOW="\033[1;33m"
+        RED="\033[0;31m"
+        NC="\033[0m" # No Color
+
+        # Configuration
+        MICRO_INSTANCE="instance-20250422-132526"
+        WORKER_INSTANCE="instance-20250416-112838"
+        SSH_KEY_DIR="/opt/trademicro/.ssh"
+        SSH_KEY_NAME="worker_key"
+        ZONE="asia-south1-c"
+        PROJECT_ID="amiable-alcove-456605-k2"
+
+        echo -e "${YELLOW}Setting up TradeMicro Micro-Worker Architecture...${NC}"
+
+        # Determine if this is the micro or worker instance
+        HOSTNAME=$(hostname)
+        if [[ "$HOSTNAME" == "$MICRO_INSTANCE" ]]; then
+            IS_MICRO=true
+            echo -e "${GREEN}Detected MICRO instance: Setting up as frontend API server${NC}"
+        else
+            IS_MICRO=false
+            echo -e "${GREEN}Detected WORKER instance: Setting up as worker for long-running tasks${NC}"
+        fi
+
+        # Generate SSH key pair if it doesn't exist
+        if [ ! -f "$SSH_KEY_DIR/$SSH_KEY_NAME" ]; then
+            echo -e "${YELLOW}Generating SSH key pair for worker communication...${NC}"
+            ssh-keygen -t rsa -b 4096 -f "$SSH_KEY_DIR/$SSH_KEY_NAME" -N "" -C "trademicro-micro-to-worker"
+            chmod 600 "$SSH_KEY_DIR/$SSH_KEY_NAME"
+            chmod 644 "$SSH_KEY_DIR/$SSH_KEY_NAME.pub"
+            echo -e "${GREEN}SSH key pair generated successfully!${NC}"
+        fi
+
+        echo -e "${GREEN}Setup completed! You can now manually add the SSH key to the worker instance.${NC}"
+        echo -e "${YELLOW}Public key: $(cat $SSH_KEY_DIR/$SSH_KEY_NAME.pub)${NC}"
+        SETUPEOF
+        
+        chmod +x $APP_DIR/scripts/setup_micro_architecture.sh
         
         # Create systemd service
         cat > /etc/systemd/system/trademicro.service << SERVICEEOF
