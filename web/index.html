@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeMicro Dashboard</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-chart-line"></i>
+                <h1>TradeMicro</h1>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#" class="active" data-section="dashboard">Dashboard</a></li>
+                    <li><a href="#" data-section="trades">Trades</a></li>
+                    <li><a href="#" data-section="symbols">Symbols</a></li>
+                    <li><a href="#" data-section="broker-tokens">Broker Tokens</a></li>
+                    <li><a href="#" data-section="tasks">Tasks</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <span id="username">Loading...</span>
+                <button id="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <main>
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="active">
+                <h2>Dashboard</h2>
+                <div class="dashboard-cards">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-exchange-alt"></i>
+                            <h3>Trades</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="count" id="trades-count">0</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-coins"></i>
+                            <h3>Symbols</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="count" id="symbols-count">0</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-key"></i>
+                            <h3>Broker Tokens</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="count" id="tokens-count">0</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-tasks"></i>
+                            <h3>Tasks</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="count" id="tasks-count">0</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="system-info">
+                    <h3>System Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="label">API Status:</span>
+                            <span class="value" id="api-status">Checking...</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">API Version:</span>
+                            <span class="value" id="api-version">Unknown</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Server Time:</span>
+                            <span class="value" id="server-time">-</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Trades Section -->
+            <section id="trades">
+                <h2>Trades</h2>
+                <div class="action-bar">
+                    <button id="new-trade-btn" class="primary-btn"><i class="fas fa-plus"></i> New Trade</button>
+                    <div class="search-bar">
+                        <input type="text" id="trade-search" placeholder="Search trades...">
+                        <button><i class="fas fa-search"></i></button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="trades-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Symbol</th>
+                                <th>Type</th>
+                                <th>Quantity</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Created At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Trade rows will be added here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Symbols Section -->
+            <section id="symbols">
+                <h2>Symbols</h2>
+                <div class="action-bar">
+                    <button id="new-symbol-btn" class="primary-btn"><i class="fas fa-plus"></i> New Symbol</button>
+                    <div class="search-bar">
+                        <input type="text" id="symbol-search" placeholder="Search symbols...">
+                        <button><i class="fas fa-search"></i></button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="symbols-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Exchange</th>
+                                <th>Type</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Symbol rows will be added here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Broker Tokens Section -->
+            <section id="broker-tokens">
+                <h2>Broker Tokens</h2>
+                <div class="action-bar">
+                    <button id="new-token-btn" class="primary-btn"><i class="fas fa-plus"></i> New Token</button>
+                </div>
+                <div class="table-container">
+                    <table id="tokens-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Broker</th>
+                                <th>Token</th>
+                                <th>Created At</th>
+                                <th>Expires At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Token rows will be added here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Tasks Section -->
+            <section id="tasks">
+                <h2>Tasks</h2>
+                <div class="action-bar">
+                    <button id="new-task-btn" class="primary-btn"><i class="fas fa-plus"></i> New Task</button>
+                    <div class="task-filter">
+                        <label for="task-status-filter">Status:</label>
+                        <select id="task-status-filter">
+                            <option value="all">All</option>
+                            <option value="pending">Pending</option>
+                            <option value="running">Running</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="tasks-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Created At</th>
+                                <th>Updated At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Task rows will be added here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal Templates -->
+<div class="modal" id="family-member-modal">
+    <div class="modal-content">
+        <span class="close-btn">&times;</span>
+        <h2 id="family-modal-title">Add Family Member</h2>
+        <form id="family-member-form">
+            <input type="hidden" id="family-id">
+            <div class="form-group">
+                <label for="family-name-input">Name</label>
+                <input type="text" id="family-name-input" required>
+            </div>
+            <div class="form-group">
+                <label for="family-email-input">Email</label>
+                <input type="email" id="family-email-input" required>
+            </div>
+            <div class="form-group">
+                <label for="family-phone-input">Phone</label>
+                <input type="text" id="family-phone-input" required>
+            </div>
+            <div class="form-group">
+                <label for="family-pin-input">PIN</label>
+                <input type="password" id="family-pin-input" required>
+            </div>
+            <div class="form-group">
+                <label for="family-client-id-input">Client ID</label>
+                <input type="text" id="family-client-id-input" required>
+            </div>
+            <div class="form-group">
+                <label for="family-client-token-input">Client Token</label>
+                <input type="text" id="family-client-token-input" required>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="secondary-btn" id="cancel-family-btn">Cancel</button>
+                <button type="submit" class="primary-btn">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+    <div class="modal" id="login-modal">
+        <div class="modal-content">
+            <h2>Login</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username-input">Username</label>
+                    <input type="text" id="username-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="password-input">Password</label>
+                    <input type="password" id="password-input" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="primary-btn">Login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="token-modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2 id="token-modal-title">Add Broker Token</h2>
+            <form id="token-form">
+                <input type="hidden" id="token-id">
+                <div class="form-group">
+                    <label for="broker-input">Broker</label>
+                    <select id="broker-input" required>
+                        <option value="">Select Broker</option>
+                        <option value="zerodha">Zerodha</option>
+                        <option value="upstox">Upstox</option>
+                        <option value="angelbroking">Angel Broking</option>
+                        <option value="icicidirect">ICICI Direct</option>
+                        <option value="5paisa">5paisa</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="token-input">Token</label>
+                    <input type="text" id="token-input" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="secondary-btn" id="cancel-token-btn">Cancel</button>
+                    <button type="submit" class="primary-btn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

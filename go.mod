@@ -22,6 +22,8 @@ require (
 	github.com/jackc/pgx/v5 v5.4.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c // indirect
+	github.com/shurcooL/vfsgen v0.0.0-20230704071429-0000e147ea92 // indirect
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 )

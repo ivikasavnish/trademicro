@@ -1,0 +1,793 @@
+{
+  "info": {
+    "_postman_id": "f8a7b3e5-6d4c-4e5b-9f8a-7b3e56d4c4e5",
+    "name": "TradeMicro API",
+    "description": "Collection for the TradeMicro API endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"vikasavnish\",\n  \"password\": \"Servloci@54321\"\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/login",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "login"
+              ]
+            },
+            "description": "Authenticate and get a JWT token"
+          },
+          "response": []
+        }
+      ],
+      "description": "Authentication endpoints"
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/health",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": "Check if the API is running"
+          },
+          "response": []
+        }
+      ],
+      "description": "Health check endpoints"
+    },
+    {
+      "name": "Trades",
+      "item": [
+        {
+          "name": "Get All Trades",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/trades",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "trades"
+              ]
+            },
+            "description": "Get all trades"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Trade",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"quantity\": 10,\n  \"price\": 150.50,\n  \"side\": \"buy\",\n  \"status\": \"open\"\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/trades",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "trades"
+              ]
+            },
+            "description": "Create a new trade"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Trade by ID",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/trades/1",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "trades",
+                "1"
+              ]
+            },
+            "description": "Get a specific trade by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Trade",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"quantity\": 15,\n  \"price\": 155.75,\n  \"side\": \"buy\",\n  \"status\": \"filled\"\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/trades/1",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "trades",
+                "1"
+              ]
+            },
+            "description": "Update an existing trade"
+          },
+          "response": []
+        }
+      ],
+      "description": "Trade management endpoints"
+    },
+    {
+      "name": "Symbols",
+      "item": [
+        {
+          "name": "Get All Symbols",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/symbols",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "symbols"
+              ]
+            },
+            "description": "Get all symbols"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Symbol",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"AAPL\",\n  \"description\": \"Apple Inc.\",\n  \"exchange\": \"NASDAQ\"\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/symbols",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "symbols"
+              ]
+            },
+            "description": "Create a new symbol"
+          },
+          "response": []
+        }
+      ],
+      "description": "Symbol management endpoints"
+    },
+    {
+      "name": "Broker Tokens",
+      "item": [
+        {
+          "name": "Get All Broker Tokens",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/broker-tokens",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "broker-tokens"
+              ]
+            },
+            "description": "Get all broker tokens"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Broker Token",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"broker\": \"zerodha\",\n  \"api_key\": \"your_api_key\",\n  \"api_secret\": \"your_api_secret\",\n  \"user_id\": \"your_user_id\"\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/broker-tokens",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "broker-tokens"
+              ]
+            },
+            "description": "Create a new broker token"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Broker Token",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"broker\": \"zerodha\",\n  \"api_key\": \"updated_api_key\",\n  \"api_secret\": \"updated_api_secret\",\n  \"user_id\": \"updated_user_id\"\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/broker-tokens/1",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "broker-tokens",
+                "1"
+              ]
+            },
+            "description": "Update an existing broker token"
+          },
+          "response": []
+        }
+      ],
+      "description": "Broker token management endpoints"
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/users",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Get all users"
+          },
+          "response": []
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser\",\n  \"password\": \"password123\",\n  \"email\": \"newuser@example.com\",\n  \"role\": \"user\"\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/users",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "description": "Create a new user"
+          },
+          "response": []
+        }
+      ],
+      "description": "User management endpoints"
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Get All Tasks",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/tasks",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "Get all tasks"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Task",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Data Import\",\n  \"description\": \"Import historical data\",\n  \"type\": \"data_import\",\n  \"parameters\": {\n    \"symbol\": \"AAPL\",\n    \"timeframe\": \"1d\",\n    \"start_date\": \"2023-01-01\",\n    \"end_date\": \"2023-12-31\"\n  }\n}"
+            },
+            "url": {
+              "raw": "https://trade.servloci.in/api/tasks",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "Create a new task"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task by ID",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/tasks/1",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "1"
+              ]
+            },
+            "description": "Get a specific task by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Start Task",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/tasks/1/start",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "1",
+                "start"
+              ]
+            },
+            "description": "Start a task"
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Task",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/tasks/1/cancel",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "1",
+                "cancel"
+              ]
+            },
+            "description": "Cancel a task"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task Logs",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://trade.servloci.in/api/tasks/1/logs",
+              "protocol": "https",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "1",
+                "logs"
+              ]
+            },
+            "description": "Get logs for a specific task"
+          },
+          "response": []
+        }
+      ],
+      "description": "Task management endpoints"
+    },
+    {
+      "name": "WebSocket",
+      "item": [
+        {
+          "name": "WebSocket Connection",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "wss://trade.servloci.in/ws",
+              "protocol": "wss",
+              "host": [
+                "trade",
+                "servloci",
+                "in"
+              ],
+              "path": [
+                "ws"
+              ]
+            },
+            "description": "Connect to the WebSocket endpoint for real-time updates"
+          },
+          "response": []
+        }
+      ],
+      "description": "WebSocket endpoints for real-time communication"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-save the token from login response",
+          "if (pm.response.code === 200 && pm.info.requestName === 'Login') {",
+          "    var jsonData = pm.response.json();",
+          "    if (jsonData.access_token) {",
+          "        pm.environment.set('access_token', jsonData.access_token);",
+          "        console.log('Token saved to environment');",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://trade.servloci.in",
+      "type": "string"
+    }
+  ]
+}

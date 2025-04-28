@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -32,12 +35,28 @@ var (
 )
 
 // Models
+
+type FamilyMember struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	UserID      uint      `json:"user_id"`
+	Name        string    `json:"name"`
+	Email       string    `json:"email"`
+	Phone       string    `json:"phone"`
+	Pin         string    `json:"pin"`
+	PortfolioID *uint     `json:"portfolioId"`
+	IsActive    bool      `json:"isActive"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	ClientToken string    `json:"client_token" gorm:"-"`
+	ClientID    string    `json:"client_id" gorm:"-"`
+}
 type User struct {
-	ID       uint   `gorm:"primaryKey" json:"id"`
-	Username string `gorm:"unique" json:"username"`
-	Password string `json:"password,omitempty"`
-	Email    string `json:"email"`
-	Role     string `json:"role"`
+	ID             uint   `gorm:"primaryKey" json:"id"`
+	Username       string `gorm:"unique" json:"username"`
+	Password       string `json:"password,omitempty" gorm:"column:password"`
+	HashedPassword string `json:"-" gorm:"column:hashed_password"`
+	Email          string `json:"email"`
+	Role           string `json:"role"`
 }
 
 type TradeOrder struct {
@@ -110,6 +129,11 @@ func init() {
 }
 
 func initDB() {
+	// ...
+	// Add FamilyMember to migrations
+
+	// ...
+
 	dbURL := os.Getenv("POSTGRES_URL")
 	if dbURL == "" {
 		dbURL = "postgres://postgres:password@localhost:5432/trademicro"
@@ -124,18 +148,17 @@ func initDB() {
 	}
 
 	// Auto migrate the schema
-	db.AutoMigrate(&User{}, &TradeOrder{}, &BrokerToken{}, &Symbol{})
 
 	// Create a default admin user if none exists
 	var userCount int64
 	db.Model(&User{}).Count(&userCount)
 	if userCount == 0 {
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
+		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("Servloci@54321"), bcrypt.DefaultCost)
 		db.Create(&User{
-			Username: "admin",
-			Password: string(hashedPassword),
-			Email:    "admin@example.com",
-			Role:     "admin",
+			Username:       "vikasavnish",
+			HashedPassword: string(hashedPassword),
+			Email:          "bizpowersolution@gmail.com",
+			Role:           "admin",
 		})
 		log.Println("Created default admin user")
 	}
@@ -208,7 +231,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check password
-	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginReq.Password))
+	err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(loginReq.Password))
 	if err != nil {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
@@ -405,6 +428,58 @@ func createBrokerTokenHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(token)
 }
 
+// updateBrokerTokenHandler handles the update of broker tokens that expire in 1 month
+func updateBrokerTokenHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract token ID from URL parameters
+	vars := mux.Vars(r)
+	tokenID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid token ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get the existing token
+	var existingToken BrokerToken
+	result := db.First(&existingToken, tokenID)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			http.Error(w, "Token not found", http.StatusNotFound)
+		} else {
+			http.Error(w, result.Error.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Verify the user owns this token
+	username := r.Context().Value("username").(string)
+	if existingToken.User != username {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse the updated token data
+	var updatedToken BrokerToken
+	if err := json.NewDecoder(r.Body).Decode(&updatedToken); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Update only the token field and reset CreatedAt
+	existingToken.Token = updatedToken.Token
+	existingToken.CreatedAt = time.Now()
+
+	// Save the updated token
+	result = db.Save(&existingToken)
+	if result.Error != nil {
+		http.Error(w, result.Error.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated token
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(existingToken)
+}
+
 // User handlers
 func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 	var users []User
@@ -481,12 +556,141 @@ func initServerConfig() ServerConfig {
 	}
 }
 
+// --- Family Member Handlers ---
+
+func getFamilyMembersHandler(w http.ResponseWriter, r *http.Request) {
+	username, ok := r.Context().Value("username").(string)
+	if !ok || username == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var user User
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		return
+	}
+	var members []FamilyMember
+	if err := db.Where("user_id = ?", user.ID).Find(&members).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(members)
+}
+
+func createFamilyMemberHandler(w http.ResponseWriter, r *http.Request) {
+	username, ok := r.Context().Value("username").(string)
+	if !ok || username == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var user User
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		return
+	}
+	var member FamilyMember
+	if err := json.NewDecoder(r.Body).Decode(&member); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	member.UserID = user.ID
+	member.CreatedAt = time.Now()
+	member.UpdatedAt = time.Now()
+	if err := db.Create(&member).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(member)
+}
+
+func updateFamilyMemberHandler(w http.ResponseWriter, r *http.Request) {
+	username, ok := r.Context().Value("username").(string)
+	if !ok || username == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var user User
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		return
+	}
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	var member FamilyMember
+	if err := db.First(&member, id).Error; err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if member.UserID != user.ID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if err := json.NewDecoder(r.Body).Decode(&member); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	member.UserID = user.ID // Ensure user cannot change ownership
+	member.UpdatedAt = time.Now()
+	if err := db.Save(&member).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(member)
+}
+
+func deleteFamilyMemberHandler(w http.ResponseWriter, r *http.Request) {
+	username, ok := r.Context().Value("username").(string)
+	if !ok || username == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var user User
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		return
+	}
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	var member FamilyMember
+	if err := db.First(&member, id).Error; err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if member.UserID != user.ID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if err := db.Delete(&FamilyMember{}, id).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
 func main() {
 	// Initialize server configuration
 	config := initServerConfig()
 
 	// Create a new router
 	r := mux.NewRouter()
+
+	// Add health check endpoint
+	r.HandleFunc("/api/health", api.HealthHandler).Methods("GET")
+
+	// Serve the web application
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 
 	// Set up CORS
 	corsMiddleware := cors.New(cors.Options{
@@ -499,51 +703,74 @@ func main() {
 	// Apply CORS middleware
 	handler := corsMiddleware.Handler(r)
 
-	// Authentication routes
-	r.HandleFunc("/token", loginHandler).Methods("POST")
-
 	// WebSocket route
 	r.HandleFunc("/ws", handleWebSocket)
 
-	// API routes with authentication
+	// Add public endpoints directly to the root router (no authentication required)
+	r.HandleFunc("/api/login", loginHandler).Methods("POST")
+	r.HandleFunc("/api/health", api.HealthHandler).Methods("GET")
+
+	// Create the API router for authenticated endpoints
 	apiRouter := r.PathPrefix("/api").Subrouter()
-	apiRouter.Use(authMiddleware)
+
+	// Create a subrouter for authenticated endpoints
+	authRouter := apiRouter.PathPrefix("").Subrouter()
+	authRouter.Use(authMiddleware)
 
 	// Trade routes
-	apiRouter.HandleFunc("/trades", getTradesHandler).Methods("GET")
-	apiRouter.HandleFunc("/trades", createTradeHandler).Methods("POST")
-	apiRouter.HandleFunc("/trades/{id}", getTradeHandler).Methods("GET")
-	apiRouter.HandleFunc("/trades/{id}", updateTradeHandler).Methods("PUT")
+	authRouter.HandleFunc("/trades", getTradesHandler).Methods("GET")
+	authRouter.HandleFunc("/trades", createTradeHandler).Methods("POST")
+	authRouter.HandleFunc("/trades/{id}", getTradeHandler).Methods("GET")
+	authRouter.HandleFunc("/trades/{id}", updateTradeHandler).Methods("PUT")
 
 	// Symbol routes
-	apiRouter.HandleFunc("/symbols", getSymbolsHandler).Methods("GET")
-	apiRouter.HandleFunc("/symbols", createSymbolHandler).Methods("POST")
+	authRouter.HandleFunc("/symbols", getSymbolsHandler).Methods("GET")
+	authRouter.HandleFunc("/symbols", createSymbolHandler).Methods("POST")
 
 	// Broker token routes
-	apiRouter.HandleFunc("/broker-tokens", getBrokerTokensHandler).Methods("GET")
-	apiRouter.HandleFunc("/broker-tokens", createBrokerTokenHandler).Methods("POST")
+	authRouter.HandleFunc("/broker-tokens", getBrokerTokensHandler).Methods("GET")
+	authRouter.HandleFunc("/broker-tokens", createBrokerTokenHandler).Methods("POST")
+	authRouter.HandleFunc("/broker-tokens/{id}", updateBrokerTokenHandler).Methods("PUT")
 
 	// User routes
-	apiRouter.HandleFunc("/users", getUsersHandler).Methods("GET")
-	apiRouter.HandleFunc("/users", createUserHandler).Methods("POST")
+	authRouter.HandleFunc("/users", getUsersHandler).Methods("GET")
+	authRouter.HandleFunc("/users", createUserHandler).Methods("POST")
+
+	// Family member sync routes
+	authRouter.HandleFunc("/family-members", getFamilyMembersHandler).Methods("GET")
+	authRouter.HandleFunc("/family-members", createFamilyMemberHandler).Methods("POST")
+	authRouter.HandleFunc("/family-members/{id}", updateFamilyMemberHandler).Methods("PUT")
+	authRouter.HandleFunc("/family-members/{id}", deleteFamilyMemberHandler).Methods("DELETE")
 
 	// Initialize task management if this is the micro instance
 	if config.IsMicro {
 		log.Println("Initializing as FRONTEND micro instance with task management capabilities")
-		
+
 		// Create task handler with worker configuration
 		taskHandler := api.NewTaskHandler()
-		
+
 		// Register task management routes
-		taskHandler.RegisterRoutes(apiRouter)
-		
+		taskHandler.RegisterRoutes(authRouter)
+
 		// Initialize task cleanup
 		taskHandler.InitTaskCleanup()
-		
+
 		log.Printf("Task management initialized with worker: %s@%s", config.WorkerUser, config.WorkerHost)
 	} else {
 		log.Println("Initializing as WORKER instance for handling long-running tasks")
 	}
+
+	// Catch-all handler for serving the SPA
+	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// For API requests, let the router handle them
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		// For all other requests, serve the index.html file
+		http.ServeFile(w, r, "web/index.html")
+	})
 
 	// Start the WebSocket broadcast handler
 	go handleBroadcasts()
