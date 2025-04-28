@@ -1,0 +1,49 @@
+# Sensitive files
+.env
+.env.*
+gcp-service-account.json
+process_state.json
+trade_sessions.json
+sync_remote.ssh
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+myenv/
+
+# Logs
+*.log
+sync.log
+
+# CSV and data files
+*.csv
+old.symbols.csv
+filtered.csv
+users.csv
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Node modules (if any)
+node_modules/
+
+# Miscellaneous
+*.swp
+.DS_Store
+
+# Postman collections (optional, if sensitive)
+# TradeMicro_API.postman_collection.json
+
+# Ignore build and deploy scripts (optional, comment out if needed)
+# *.sh
