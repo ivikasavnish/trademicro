@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,117 @@ import (
 
 	"github.com/vikasavnish/trademicro/api"
 )
+
+// StartTradeProcessRequest is the request body for starting a trade process
+// script: one of dhanfeed_sync.py, updater.py, trade_log.py
+// args: list of string arguments
+// Example: {"script": "trade_log.py", "args": ["COALINDIA", "5", "--diff", ".1", "--zag", "5", "--type", "MTF", "sonam"]}
+type StartTradeProcessRequest struct {
+	Script string   `json:"script"`
+	Args   []string `json:"args"`
+}
+
+// startTradeProcessHandler starts a background trading process using trade_manager.py
+func startTradeProcessHandler(w http.ResponseWriter, r *http.Request) {
+	var allowedScripts = map[string]bool{
+		"dhanfeed_sync.py": true,
+		"updater.py": true,
+		"trade_log.py": true,
+	}
+	var forbiddenChars = []string{";", "&&", "|", "`", "$", ">", "<", "\n", "\r"}
+
+	var req StartTradeProcessRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "invalid request body"})
+		return
+	}
+	if req.Script == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "script is required"})
+		return
+	}
+	if !allowedScripts[req.Script] {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "script not allowed"})
+		return
+	}
+	for _, arg := range req.Args {
+		for _, ch := range forbiddenChars {
+			if strings.Contains(arg, ch) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "invalid argument detected"})
+				return
+			}
+		}
+	}
+	cmdArgs := append([]string{"start", req.Script}, req.Args...)
+	cmd := exec.Command("python3", append([]string{"trade_manager.py"}, cmdArgs...)...)
+	cmd.Dir = "." // run in project root
+	err := cmd.Start()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": err.Error()})
+		return
+	}
+	go cmd.Wait() // Do not block
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "started", "pid": cmd.Process.Pid, "error": nil})
+}
+
+// startTradeLogHandler starts trade_log.py with user-supplied args
+func startTradeLogHandler(w http.ResponseWriter, r *http.Request) {
+	var forbiddenChars = []string{";", "&&", "|", "`", "$", ">", "<", "\n", "\r"}
+
+	var req StartTradeProcessRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "invalid request body"})
+		return
+	}
+	if len(req.Args) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "args required for trade_log.py"})
+		return
+	}
+	if req.Script != "" && req.Script != "trade_log.py" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "only trade_log.py is allowed"})
+		return
+	}
+	for _, arg := range req.Args {
+		for _, ch := range forbiddenChars {
+			if strings.Contains(arg, ch) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "invalid argument detected"})
+				return
+			}
+		}
+	}
+	cmdArgs := append([]string{"start", "trade_log.py"}, req.Args...)
+	cmd := exec.Command("python3", append([]string{"trade_manager.py"}, cmdArgs...)...)
+	cmd.Dir = "."
+	err := cmd.Start()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": err.Error()})
+		return
+	}
+	go cmd.Wait()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "started", "pid": cmd.Process.Pid, "error": nil})
+}
+
 
 // Global variables
 var (
@@ -722,6 +834,17 @@ func main() {
 	authRouter.HandleFunc("/trades", createTradeHandler).Methods("POST")
 	authRouter.HandleFunc("/trades/{id}", getTradeHandler).Methods("GET")
 	authRouter.HandleFunc("/trades/{id}", updateTradeHandler).Methods("PUT")
+
+	// Trade system control endpoints (big machine)
+	authRouter.HandleFunc("/start_trade_system", startTradeSystemHandler).Methods("POST")
+	authRouter.HandleFunc("/stop_trade_system", stopTradeSystemHandler).Methods("POST")
+
+	// Trade process management endpoints
+	authRouter.HandleFunc("/start_trade_process", startTradeProcessHandler).Methods("POST")
+	authRouter.HandleFunc("/start_trade_log", startTradeLogHandler).Methods("POST")
+
+	// DEBUG: List GCE instances in zone
+	authRouter.HandleFunc("/debug/list_instances", listGCEInstancesHandler).Methods("GET")
 
 	// Symbol routes
 	authRouter.HandleFunc("/symbols", getSymbolsHandler).Methods("GET")

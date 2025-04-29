@@ -43,6 +43,17 @@ tar -czf deploy.tar.gz trademicro api web
 echo -e "${YELLOW}Copying deployment package to instance...${NC}"
 gcloud compute scp --zone $GCE_INSTANCE_ZONE deploy.tar.gz $GCE_INSTANCE:/tmp/ --quiet
 
+# Copy the GCP service account key to the instance
+if [ -f gcp-service-account.json ]; then
+    echo -e "${YELLOW}Copying gcp-service-account.json to instance...${NC}"
+    gcloud compute scp --zone $GCE_INSTANCE_ZONE gcp-service-account.json $GCE_INSTANCE:/tmp/ --quiet
+    # Move and set permissions on the server
+    gcloud compute ssh --zone $GCE_INSTANCE_ZONE $GCE_INSTANCE --command="sudo mv /tmp/gcp-service-account.json /opt/trademicro/gcp-service-account.json && sudo chmod 600 /opt/trademicro/gcp-service-account.json" --quiet
+    echo -e "${GREEN}gcp-service-account.json deployed and permissions set.${NC}"
+else
+    echo -e "${RED}gcp-service-account.json not found! Skipping service account key deployment.${NC}"
+fi
+
 # Create deployment script
 echo -e "${YELLOW}Creating deployment script...${NC}"
 cat > deploy.sh << 'EOF'
