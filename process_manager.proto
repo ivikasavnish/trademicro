@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package processmanager;
+
+service ProcessManager {
+  rpc StartProcess (ProcessRequest) returns (ProcessResponse);
+  rpc StopProcess (ProcessRequest) returns (ProcessResponse);
+  rpc ResumeProcess (ProcessRequest) returns (ProcessResponse);
+  rpc ListProcesses (ListRequest) returns (ListResponse);
+}
+
+message ProcessRequest {
+  string script = 1;
+  repeated string args = 2;
+}
+
+message ProcessResponse {
+  string status = 1;
+  string error = 2;
+  int32 pid = 3;
+}
+
+message ListRequest {}
+
+message ListResponse {
+  repeated ProcessInfo processes = 1;
+  string error = 2;
+}
+
+message ProcessInfo {
+  int32 pid = 1;
+  string script = 2;
+  repeated string args = 3;
+  string status = 4;
+}

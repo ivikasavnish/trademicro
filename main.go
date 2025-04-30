@@ -34,6 +34,79 @@ type StartTradeProcessRequest struct {
 	Args   []string `json:"args"`
 }
 
+// processActionHandler handles start/stop/resume actions for trading processes
+func processActionHandler(w http.ResponseWriter, r *http.Request) {
+	action := mux.Vars(r)["action"]
+	var allowedActions = map[string]bool{"start": true, "stop": true, "resume": true}
+	var allowedScripts = map[string]bool{"dhanfeed_sync.py": true, "updater.py": true, "trade_log.py": true}
+	var forbiddenChars = []string{";", "&&", "|", "`", "$", ">", "<", "\n", "\r"}
+
+	if !allowedActions[action] {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "invalid action"})
+		return
+	}
+	var req StartTradeProcessRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "invalid request body"})
+		return
+	}
+	if req.Script == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "script is required"})
+		return
+	}
+	if !allowedScripts[req.Script] {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "script not allowed"})
+		return
+	}
+	for _, arg := range req.Args {
+		for _, ch := range forbiddenChars {
+			if strings.Contains(arg, ch) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "invalid argument detected"})
+				return
+			}
+		}
+	}
+	cmdArgs := append([]string{action, req.Script}, req.Args...)
+	cmd := exec.Command("python3", append([]string{"trade_manager.py"}, cmdArgs...)...)
+	cmd.Dir = "."
+	err := cmd.Start()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": err.Error()})
+		return
+	}
+	go cmd.Wait()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": action + "ed", "pid": cmd.Process.Pid, "error": nil})
+}
+
+// processListHandler lists all managed trading processes
+func processListHandler(w http.ResponseWriter, r *http.Request) {
+	cmd := exec.Command("python3", "trade_manager.py", "list")
+	cmd.Dir = "."
+	output, err := cmd.Output()
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": err.Error()})
+		return
+	}
+	// The output is plain text, convert to JSON array of lines
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "processes": lines, "error": nil})
+}
+
 // startTradeProcessHandler starts a background trading process using trade_manager.py
 func startTradeProcessHandler(w http.ResponseWriter, r *http.Request) {
 	var allowedScripts = map[string]bool{
@@ -842,6 +915,9 @@ func main() {
 	// Trade process management endpoints
 	authRouter.HandleFunc("/start_trade_process", startTradeProcessHandler).Methods("POST")
 	authRouter.HandleFunc("/start_trade_log", startTradeLogHandler).Methods("POST")
+
+	authRouter.HandleFunc("/process/{action:start|stop|resume}", processActionHandler).Methods("POST")
+	authRouter.HandleFunc("/process/list", processListHandler).Methods("GET")
 
 	// DEBUG: List GCE instances in zone
 	authRouter.HandleFunc("/debug/list_instances", listGCEInstancesHandler).Methods("GET")
