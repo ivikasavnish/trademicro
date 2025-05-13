@@ -116,3 +116,107 @@ The `deploy_go.sh` script automates the deployment process. Before running it:
 - Excellent performance
 - Low memory footprint
 - Built-in concurrency support
+
+## Database Migrations
+
+This project uses [golang-migrate](https://github.com/golang-migrate/migrate) for database migrations.
+
+### Prerequisites
+
+Install the migrate CLI tool:
+
+```bash
+go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+```
+
+### Migration Commands
+
+We provide two methods to manage migrations:
+
+#### 1. Using the Makefile
+
+```bash
+# Apply all pending migrations
+make migrate-up
+
+# Rollback all migrations
+make migrate-down
+
+# Show current migration version
+make migrate-version
+
+# Create a new migration
+make migrate-create name=add_new_table
+
+# Apply specific number of migrations
+make migrate-steps-up steps=1
+
+# Rollback specific number of migrations
+make migrate-steps-down steps=1
+
+# Force a specific version
+make migrate-force version=1
+
+# Reset all migrations (drops everything and rebuilds)
+make migrate-reset
+
+# Install migration dependencies
+make install-deps
+```
+
+#### 2. Using the shell script
+
+The `migrate.sh` script provides more flexibility with environment handling:
+
+```bash
+# Apply all migrations using default .env
+./migrate.sh up
+
+# Apply all migrations with a custom environment file
+./migrate.sh --env .env.production up
+
+# Apply all migrations with a direct database URL
+./migrate.sh --url "postgres://user:pass@host:port/dbname" up
+
+# Create a new migration
+./migrate.sh create add_new_feature
+
+# Check migration status
+./migrate.sh status
+
+# Get help
+./migrate.sh --help
+```
+
+### Migration Files
+
+Migration files are stored in the `migrations/` directory and follow this naming convention:
+
+```
+<timestamp>_<description>.(up|down).sql
+```
+
+For example:
+- `20250511000001_create_users_table.up.sql` - Creates the users table
+- `20250511000001_create_users_table.down.sql` - Drops the users table
+
+### CI/CD Integration
+
+For CI/CD environments, you can use:
+
+```bash
+# Run migrations before deployment
+./migrate.sh --url "${DATABASE_URL}" up
+
+# Force specific version if needed
+./migrate.sh --url "${DATABASE_URL}" force 1
+```
+
+### Current Schema Structure
+
+1. **users** - User accounts and authentication
+2. **trade_orders** - Trading orders and execution details 
+3. **symbols** - Financial instruments and trading symbols
+4. **broker_tokens** - Authentication tokens for various brokers
+5. **family_members** - Member management for portfolio sharing
+6. **favorite_symbols** - User watchlists and favorites

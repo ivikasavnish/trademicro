@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/ably/ably-go/ably"
 	"github.com/joho/godotenv"
@@ -26,7 +25,7 @@ type ProcessStatus struct {
 	Error  string   `json:"error"`
 }
 
-func main() {
+func ablymain() {
 	// Load .env file for ABLY_API_KEY and ABLY_CHANNEL
 	err := godotenv.Load()
 	if err != nil {

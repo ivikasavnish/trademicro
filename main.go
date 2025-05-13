@@ -23,6 +23,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/vikasavnish/trademicro/api"
+	"github.com/vikasavnish/trademicro/internal/handlers"
+	"github.com/vikasavnish/trademicro/internal/services"
 )
 
 // StartTradeProcessRequest is the request body for starting a trade process
@@ -111,8 +113,8 @@ func processListHandler(w http.ResponseWriter, r *http.Request) {
 func startTradeProcessHandler(w http.ResponseWriter, r *http.Request) {
 	var allowedScripts = map[string]bool{
 		"dhanfeed_sync.py": true,
-		"updater.py": true,
-		"trade_log.py": true,
+		"updater.py":       true,
+		"trade_log.py":     true,
 	}
 	var forbiddenChars = []string{";", "&&", "|", "`", "$", ">", "<", "\n", "\r"}
 
@@ -208,15 +210,15 @@ func startTradeLogHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "started", "pid": cmd.Process.Pid, "error": nil})
 }
 
-
 // Global variables
 var (
-	db           *gorm.DB
-	redisClient  *redis.Client
-	connections  = make(map[*websocket.Conn]bool)
-	broadcast    = make(chan Message)
-	upgrader     = websocket.Upgrader{}
-	jwtSecretKey = []byte(os.Getenv("SECRET_KEY"))
+	db              *gorm.DB
+	redisClient     *redis.Client
+	connections     = make(map[*websocket.Conn]bool)
+	broadcast       = make(chan Message)
+	upgrader        = websocket.Upgrader{}
+	jwtSecretKey    = []byte(os.Getenv("SECRET_KEY"))
+	symbolUpdateJob *SymbolUpdateJob
 )
 
 // Models
@@ -264,9 +266,11 @@ type BrokerToken struct {
 }
 
 type Symbol struct {
-	ID     uint   `gorm:"primaryKey" json:"id"`
-	Symbol string `json:"symbol"`
-	Name   string `json:"name"`
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	Symbol   string `json:"symbol" gorm:"uniqueIndex"`
+	Name     string `json:"name"`
+	Exchange string `json:"exchange"`
+	Type     string `json:"type"`
 }
 
 type Message struct {
@@ -314,10 +318,7 @@ func init() {
 }
 
 func initDB() {
-	// ...
-	// Add FamilyMember to migrations
-
-	// ...
+	// ...existing code...
 
 	dbURL := os.Getenv("POSTGRES_URL")
 	if dbURL == "" {
@@ -332,7 +333,7 @@ func initDB() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// Auto migrate the schema
+	// Auto migrations removed - using SQL migration files instead
 
 	// Create a default admin user if none exists
 	var userCount int64
@@ -864,12 +865,256 @@ func deleteFamilyMemberHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
 
+// SymbolUpdateJob handles updating stock symbols once a day
+type SymbolUpdateJob struct {
+	ticker     *time.Ticker
+	db         *gorm.DB
+	dataSource SymbolDataSource
+	running    bool
+	stopCh     chan struct{}
+}
+
+// SymbolDataSource provides symbol data
+type SymbolDataSource interface {
+	FetchSymbols() ([]Symbol, error)
+}
+
+// DefaultSymbolDataSource implements SymbolDataSource
+type DefaultSymbolDataSource struct{}
+
+// FetchSymbols fetches stock symbols from a data source
+func (ds *DefaultSymbolDataSource) FetchSymbols() ([]Symbol, error) {
+	// This is a placeholder implementation
+	// In a real-world scenario, you might fetch this data from:
+	// - An external API (e.g., Yahoo Finance, AlphaVantage)
+	// - A file on disk
+	// - Another internal service
+
+	log.Println("Fetching symbols from data source")
+
+	// Sample data for demonstration
+	symbols := []Symbol{
+		{Symbol: "RELIANCE", Name: "Reliance Industries", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "TCS", Name: "Tata Consultancy Services", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "HDFCBANK", Name: "HDFC Bank", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "INFY", Name: "Infosys", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "ICICIBANK", Name: "ICICI Bank", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "HINDUNILVR", Name: "Hindustan Unilever", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "ITC", Name: "ITC", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "KOTAKBANK", Name: "Kotak Mahindra Bank", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "LT", Name: "Larsen & Toubro", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "AXISBANK", Name: "Axis Bank", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "BHARTIARTL", Name: "Bharti Airtel", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "ASIANPAINT", Name: "Asian Paints", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "MARUTI", Name: "Maruti Suzuki India", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "SBIN", Name: "State Bank of India", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "BAJFINANCE", Name: "Bajaj Finance", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "TATASTEEL", Name: "Tata Steel", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "BAJAJFINSV", Name: "Bajaj Finserv", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "NESTLEIND", Name: "Nestle India", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "TECHM", Name: "Tech Mahindra", Exchange: "NSE", Type: "EQ"},
+		{Symbol: "WIPRO", Name: "Wipro", Exchange: "NSE", Type: "EQ"},
+	}
+
+	return symbols, nil
+}
+
+// NewSymbolUpdateJob creates a new symbol update job
+func NewSymbolUpdateJob(db *gorm.DB) *SymbolUpdateJob {
+	return &SymbolUpdateJob{
+		db:         db,
+		dataSource: &DefaultSymbolDataSource{},
+		stopCh:     make(chan struct{}),
+	}
+}
+
+// Start begins the symbol update job
+func (job *SymbolUpdateJob) Start() {
+	if job.running {
+		log.Println("Symbol update job is already running")
+		return
+	}
+
+	job.running = true
+
+	// Run job immediately on startup
+	job.UpdateSymbols()
+
+	go func() {
+		for {
+			// Calculate time until next 8:45 AM
+			now := time.Now()
+			nextRun := time.Date(now.Year(), now.Month(), now.Day(), 8, 45, 0, 0, now.Location())
+			if now.After(nextRun) {
+				// If it's already past 8:45 AM today, schedule for tomorrow
+				nextRun = nextRun.Add(24 * time.Hour)
+			}
+
+			waitDuration := nextRun.Sub(now)
+			log.Printf("Symbol update job scheduled to run at 8:45 AM, waiting for %v", waitDuration)
+
+			// Create timer for next run
+			timer := time.NewTimer(waitDuration)
+
+			select {
+			case <-timer.C:
+				// Run the update job
+				job.UpdateSymbols()
+
+				// Continue the loop to schedule the next run
+				continue
+			case <-job.stopCh:
+				timer.Stop()
+				job.running = false
+				return
+			}
+		}
+	}()
+
+	log.Println("Symbol update job started, will run daily at 8:45 AM")
+}
+
+// Stop terminates the symbol update job
+func (job *SymbolUpdateJob) Stop() {
+	if !job.running {
+		return
+	}
+	close(job.stopCh)
+	job.running = false
+	log.Println("Symbol update job stopped")
+}
+
+// UpdateSymbols fetches and updates symbols in the database
+func (job *SymbolUpdateJob) UpdateSymbols() {
+	log.Println("Running scheduled symbol update job")
+
+	// Fetch symbols from data source
+	symbols, err := job.dataSource.FetchSymbols()
+	if err != nil {
+		log.Printf("Error fetching symbols: %v", err)
+		return
+	}
+
+	log.Printf("Fetched %d symbols from data source", len(symbols))
+
+	// Begin a transaction
+	tx := job.db.Begin()
+	if tx.Error != nil {
+		log.Printf("Error starting transaction: %v", tx.Error)
+		return
+	}
+
+	// For each symbol
+	for _, symbol := range symbols {
+		// Try to find existing symbol
+		var existingSymbol Symbol
+		result := tx.Where("symbol = ?", symbol.Symbol).First(&existingSymbol)
+
+		// If symbol exists, update it
+		if result.Error == nil {
+			existingSymbol.Name = symbol.Name
+			existingSymbol.Exchange = symbol.Exchange
+			existingSymbol.Type = symbol.Type
+
+			if err := tx.Save(&existingSymbol).Error; err != nil {
+				log.Printf("Error updating symbol %s: %v", symbol.Symbol, err)
+				tx.Rollback()
+				return
+			}
+		} else {
+			// Create new symbol if it doesn't exist
+			if err := tx.Create(&symbol).Error; err != nil {
+				log.Printf("Error creating symbol %s: %v", symbol.Symbol, err)
+				tx.Rollback()
+				return
+			}
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("Error committing symbol updates: %v", err)
+		tx.Rollback()
+		return
+	}
+
+	log.Println("Symbol update completed successfully")
+
+	// Broadcast update to websocket clients
+	var symbolCount int64
+	job.db.Model(&Symbol{}).Count(&symbolCount)
+	broadcast <- Message{Type: "symbols_updated", Content: map[string]interface{}{
+		"count": symbolCount,
+		"time":  time.Now(),
+	}}
+}
+
+// triggerSymbolUpdateHandler allows manual triggering of the symbol update job
+func triggerSymbolUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the username from context for logging purposes
+	username, _ := r.Context().Value("username").(string)
+
+	log.Printf("Manual symbol update triggered by user: %s", username)
+
+	// Access the global job instance and trigger an update
+	go symbolUpdateJob.UpdateSymbols()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": "Symbol update job triggered successfully",
+	})
+}
+
+// startTradeSystemHandler starts the trading system on the worker machine
+func startTradeSystemHandler(w http.ResponseWriter, r *http.Request) {
+	// This is a placeholder for the actual implementation
+	log.Println("Starting trade system...")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": "Trade system start command issued",
+	})
+}
+
+// stopTradeSystemHandler stops the trading system on the worker machine
+func stopTradeSystemHandler(w http.ResponseWriter, r *http.Request) {
+	// This is a placeholder for the actual implementation
+	log.Println("Stopping trade system...")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": "Trade system stop command issued",
+	})
+}
+
+// listGCEInstancesHandler is a debug handler to list GCE instances
+func listGCEInstancesHandler(w http.ResponseWriter, r *http.Request) {
+	// This is a placeholder for the actual implementation
+	log.Println("Listing GCE instances (debug)...")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"instances": []map[string]string{
+			{"name": "instance-1", "status": "RUNNING"},
+			{"name": "instance-2", "status": "STOPPED"},
+		},
+	})
+}
+
 func main() {
 	// Initialize server configuration
 	config := initServerConfig()
 
 	// Create a new router
 	r := mux.NewRouter()
+
+	// Initialize symbol update job
+	symbolUpdateJob = NewSymbolUpdateJob(db)
+	symbolUpdateJob.Start()
 
 	// Add health check endpoint
 	r.HandleFunc("/api/health", api.HealthHandler).Methods("GET")
@@ -925,6 +1170,7 @@ func main() {
 	// Symbol routes
 	authRouter.HandleFunc("/symbols", getSymbolsHandler).Methods("GET")
 	authRouter.HandleFunc("/symbols", createSymbolHandler).Methods("POST")
+	authRouter.HandleFunc("/symbols/update", triggerSymbolUpdateHandler).Methods("POST")
 
 	// Broker token routes
 	authRouter.HandleFunc("/broker-tokens", getBrokerTokensHandler).Methods("GET")
@@ -958,6 +1204,13 @@ func main() {
 	} else {
 		log.Println("Initializing as WORKER instance for handling long-running tasks")
 	}
+
+	// Initialize symbol service and handler
+	symbolService := services.NewSymbolService(db)
+	symbolHandler := handlers.NewSymbolHandler(symbolService)
+
+	// Register symbol routes
+	symbolHandler.RegisterRoutes(authRouter)
 
 	// Catch-all handler for serving the SPA
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

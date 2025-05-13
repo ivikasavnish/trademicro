@@ -1,1 +1,0 @@
--- Removed client_token and client_id columns as they are not required for family_members table.
