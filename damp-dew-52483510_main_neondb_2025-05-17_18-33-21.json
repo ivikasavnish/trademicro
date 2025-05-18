@@ -1,0 +1,161 @@
+[{
+  "column_name": "Unnamed: 39",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_CO_SL_RANGE_MIN_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_CO_SL_RANGE_MIN_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_BO_MIN_MARGIN_PER",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_BO_MIN_MARGIN_PER",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_BO_SL_RANGE_MAX_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_BO_SL_RANGE_MAX_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_BO_SL_RANGE_MIN_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_BO_SL_MIN_RANGE",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_BO_PROFIT_RANGE_MAX_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_BO_PROFIT_RANGE_MAX_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_BO_PROFIT_RANGE_MIN_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_BO_PROFIT_RANGE_MIN_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "MTF_LEVERAGE",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SECURITY_ID",
+  "data_type": "bigint",
+  "character_maximum_length": null
+}, {
+  "column_name": "UNDERLYING_SECURITY_ID",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "LOT_SIZE",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SM_EXPIRY_DATE",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "STRIKE_PRICE",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "OPTION_TYPE",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "TICK_SIZE",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "EXPIRY_FLAG",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "ASM_GSM_CATEGORY",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_CO_MIN_MARGIN_PER",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_CO_MIN_MARGIN_PER",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_CO_SL_RANGE_MAX_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SELL_CO_SL_RANGE_MAX_PERC",
+  "data_type": "double precision",
+  "character_maximum_length": null
+}, {
+  "column_name": "SEGMENT",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "ASM_GSM_FLAG",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "ISIN",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "INSTRUMENT",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "EXCH_ID",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "UNDERLYING_SYMBOL",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "SYMBOL_NAME",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "DISPLAY_NAME",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "INSTRUMENT_TYPE",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "SERIES",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "BUY_SELL_INDICATOR",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "BRACKET_FLAG",
+  "data_type": "text",
+  "character_maximum_length": null
+}, {
+  "column_name": "COVER_FLAG",
+  "data_type": "text",
+  "character_maximum_length": null
+}]

@@ -9,18 +9,17 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/vikasavnish/trademicro/internal/services"
-	"gorm.io/gorm"
 )
 
 type FavouredSymbolHandler struct {
 	favouredSymbolService *services.FavouredSymbolService
-	db                    *gorm.DB
+	userService           services.UserService
 }
 
-func NewFavouredSymbolHandler(favouredSymbolService *services.FavouredSymbolService, db *gorm.DB) *FavouredSymbolHandler {
+func NewFavouredSymbolHandler(favouredSymbolService *services.FavouredSymbolService, userService services.UserService) *FavouredSymbolHandler {
 	return &FavouredSymbolHandler{
 		favouredSymbolService: favouredSymbolService,
-		db:                    db,
+		userService:           userService,
 	}
 }
 
@@ -35,7 +34,7 @@ func (h *FavouredSymbolHandler) RegisterRoutes(router *mux.Router) {
 // GetFavouredSymbols returns all favoured symbols for the current user
 func (h *FavouredSymbolHandler) GetFavouredSymbols(w http.ResponseWriter, r *http.Request) {
 	// Get user from context
-	userID, err := getUserIDFromContext(r, h.db)
+	userID, err := getUserIDFromContext(r, h.userService)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -58,7 +57,7 @@ func (h *FavouredSymbolHandler) GetFavouredSymbols(w http.ResponseWriter, r *htt
 // AddFavouredSymbol adds a symbol to user's favoured list
 func (h *FavouredSymbolHandler) AddFavouredSymbol(w http.ResponseWriter, r *http.Request) {
 	// Get user from context
-	userID, err := getUserIDFromContext(r, h.db)
+	userID, err := getUserIDFromContext(r, h.userService)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -91,7 +90,7 @@ func (h *FavouredSymbolHandler) AddFavouredSymbol(w http.ResponseWriter, r *http
 // GetFavouredSymbol gets a specific favoured symbol
 func (h *FavouredSymbolHandler) GetFavouredSymbol(w http.ResponseWriter, r *http.Request) {
 	// Get user from context
-	userID, err := getUserIDFromContext(r, h.db)
+	userID, err := getUserIDFromContext(r, h.userService)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -120,7 +119,7 @@ func (h *FavouredSymbolHandler) GetFavouredSymbol(w http.ResponseWriter, r *http
 // UpdateFavouredSymbol updates a favoured symbol's notes
 func (h *FavouredSymbolHandler) UpdateFavouredSymbol(w http.ResponseWriter, r *http.Request) {
 	// Get user from context
-	userID, err := getUserIDFromContext(r, h.db)
+	userID, err := getUserIDFromContext(r, h.userService)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -159,7 +158,7 @@ func (h *FavouredSymbolHandler) UpdateFavouredSymbol(w http.ResponseWriter, r *h
 // RemoveFavouredSymbol removes a symbol from user's favoured list
 func (h *FavouredSymbolHandler) RemoveFavouredSymbol(w http.ResponseWriter, r *http.Request) {
 	// Get user from context
-	userID, err := getUserIDFromContext(r, h.db)
+	userID, err := getUserIDFromContext(r, h.userService)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -195,19 +194,16 @@ func (h *FavouredSymbolHandler) RemoveFavouredSymbol(w http.ResponseWriter, r *h
 }
 
 // Helper to get user ID from context
-func getUserIDFromContext(r *http.Request, db *gorm.DB) (uint, error) {
+func getUserIDFromContext(r *http.Request, userService services.UserService) (uint, error) {
 	username, ok := r.Context().Value("username").(string)
 	if !ok || username == "" {
 		return 0, errors.New("unauthorized")
 	}
 
-	// Make sure this matches the actual user struct name in your models package
-	var user struct {
-		ID uint
-	}
-	if err := db.Table("users").Where("username = ?", username).First(&user).Error; err != nil {
+	userID, err := userService.GetUserIDByUsername(username)
+	if err != nil {
 		return 0, errors.New("user not found")
 	}
 
-	return user.ID, nil
+	return userID, nil
 }

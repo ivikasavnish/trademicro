@@ -1,9 +1,15 @@
+// IMPORTANT: This file is being migrated to cmd/server/main.go
+// This is kept only for backward compatibility
+// Please use the modular version at cmd/server/main.go instead
+
 package main
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,19 +18,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
-	"github.com/go-redis/redis/v8"
+	"github.com/go-redis/redis"
+	"github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/vikasavnish/trademicro/api"
+	"github.com/vikasavnish/trademicro/internal/api"
 	"github.com/vikasavnish/trademicro/internal/handlers"
 	"github.com/vikasavnish/trademicro/internal/services"
+	"github.com/vikasavnish/trademicro/internal/websocket"
 )
 
 // StartTradeProcessRequest is the request body for starting a trade process
@@ -882,40 +888,103 @@ type SymbolDataSource interface {
 // DefaultSymbolDataSource implements SymbolDataSource
 type DefaultSymbolDataSource struct{}
 
-// FetchSymbols fetches stock symbols from a data source
+// FetchSymbols fetches stock symbols from an online CSV data source
 func (ds *DefaultSymbolDataSource) FetchSymbols() ([]Symbol, error) {
-	// This is a placeholder implementation
-	// In a real-world scenario, you might fetch this data from:
-	// - An external API (e.g., Yahoo Finance, AlphaVantage)
-	// - A file on disk
-	// - Another internal service
+	log.Println("Fetching symbols from online CSV source")
 
-	log.Println("Fetching symbols from data source")
+	// URL for Dhan API's CSV data
+	csvURL := "https://images.dhan.co/api-data/api-scrip-master.csv"
 
-	// Sample data for demonstration
-	symbols := []Symbol{
-		{Symbol: "RELIANCE", Name: "Reliance Industries", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "TCS", Name: "Tata Consultancy Services", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "HDFCBANK", Name: "HDFC Bank", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "INFY", Name: "Infosys", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "ICICIBANK", Name: "ICICI Bank", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "HINDUNILVR", Name: "Hindustan Unilever", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "ITC", Name: "ITC", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "KOTAKBANK", Name: "Kotak Mahindra Bank", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "LT", Name: "Larsen & Toubro", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "AXISBANK", Name: "Axis Bank", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "BHARTIARTL", Name: "Bharti Airtel", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "ASIANPAINT", Name: "Asian Paints", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "MARUTI", Name: "Maruti Suzuki India", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "SBIN", Name: "State Bank of India", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "BAJFINANCE", Name: "Bajaj Finance", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "TATASTEEL", Name: "Tata Steel", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "BAJAJFINSV", Name: "Bajaj Finserv", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "NESTLEIND", Name: "Nestle India", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "TECHM", Name: "Tech Mahindra", Exchange: "NSE", Type: "EQ"},
-		{Symbol: "WIPRO", Name: "Wipro", Exchange: "NSE", Type: "EQ"},
+	// Make HTTP request to fetch the CSV
+	resp, err := http.Get(csvURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch CSV: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
+	// Parse CSV
+	reader := csv.NewReader(resp.Body)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSV: %v", err)
+	}
+
+	// Ensure we have at least a header row and one data row
+	if len(records) < 2 {
+		return nil, fmt.Errorf("CSV has insufficient data")
+	}
+
+	// Get header row to map column indices
+	headers := records[0]
+	columnMap := make(map[string]int)
+	for i, header := range headers {
+		columnMap[header] = i
+	}
+
+	// Check required columns exist
+	requiredColumns := []string{"SEM_TRADING_SYMBOL", "SM_SYMBOL_NAME", "SEM_EXM_EXCH_ID", "SEM_SEGMENT"}
+	for _, col := range requiredColumns {
+		if _, ok := columnMap[col]; !ok {
+			return nil, fmt.Errorf("required column '%s' not found in CSV", col)
+		}
+	}
+
+	// Convert CSV records to Symbol objects
+	var symbols []Symbol
+	for i := 1; i < len(records); i++ {
+		row := records[i]
+		// Skip if the row doesn't have enough columns
+		if len(row) < len(headers) {
+			continue
+		}
+
+		// Get values from specific columns
+		var symbol Symbol
+
+		// Map CSV columns to Symbol struct fields
+		if idx, ok := columnMap["SEM_TRADING_SYMBOL"]; ok && idx < len(row) {
+			symbol.Symbol = row[idx]
+		}
+
+		if idx, ok := columnMap["SM_SYMBOL_NAME"]; ok && idx < len(row) {
+			symbol.Name = row[idx]
+		}
+
+		if idx, ok := columnMap["SEM_EXM_EXCH_ID"]; ok && idx < len(row) {
+			symbol.Exchange = row[idx]
+		}
+
+		if idx, ok := columnMap["SEM_SEGMENT"]; ok && idx < len(row) {
+			// Map segment to Type field
+			segmentType := row[idx]
+			if segmentType == "E" {
+				symbol.Type = "EQ"
+			} else if segmentType == "D" {
+				symbol.Type = "IDX"
+			} else {
+				symbol.Type = segmentType
+			}
+		}
+
+		// Skip if symbol is empty
+		if symbol.Symbol == "" {
+			continue
+		}
+
+		symbols = append(symbols, symbol)
+
+		// Limit to 1000 symbols to avoid overwhelming the system
+		if len(symbols) >= 1000 {
+			log.Println("Limiting to 1000 symbols for performance")
+			break
+		}
+	}
+
+	log.Printf("Successfully parsed %d symbols from CSV", len(symbols))
 	return symbols, nil
 }
 
@@ -1105,6 +1174,632 @@ func listGCEInstancesHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Additional types
+
+// DhanHQInstrumentFetchConfig represents options for fetching instruments from DhanHQ API
+type DhanHQInstrumentFetchConfig struct {
+	Mode            string `json:"mode"`            // "compact" or "detailed"
+	ExchangeSegment string `json:"exchangeSegment"` // Optional segment to filter by
+	SaveToFile      bool   `json:"saveToFile"`      // Whether to save the CSV to file
+	BatchSize       int    `json:"batchSize"`       // Batch size for DB operations
+}
+
+// fetchDhanHQInstrumentsHandler fetches instruments from DhanHQ API and adds them to the database
+func fetchDhanHQInstrumentsHandler(w http.ResponseWriter, r *http.Request) {
+	// Default configuration
+	config := DhanHQInstrumentFetchConfig{
+		Mode:       "compact",
+		SaveToFile: true,
+		BatchSize:  500, // Default batch size for DB operations
+	}
+
+	// Parse request body if provided
+	if r.Body != nil && r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	log.Printf("Fetching DhanHQ instruments using mode: %s", config.Mode)
+
+	// Get current username for auditing
+	username := "system"
+	if ctxUsername, ok := r.Context().Value("username").(string); ok && ctxUsername != "" {
+		username = ctxUsername
+	}
+
+	// Use Python script for batch processing
+	scriptPath := "./update_instruments.py"
+
+	// Check if script exists
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		http.Error(w, "Instrument update script not found", http.StatusInternalServerError)
+		log.Printf("Error: update_instruments.py script not found")
+		return
+	}
+
+	// Build command with appropriate arguments
+	args := []string{
+		"--mode", config.Mode,
+		"--batch-size", fmt.Sprintf("%d", config.BatchSize),
+	}
+
+	// Add exchange segment filter if specified
+	if config.ExchangeSegment != "" {
+		args = append(args, "--exchange-segment", config.ExchangeSegment)
+	}
+
+	// Configure CSV output
+	outputFile := fmt.Sprintf("dhan_instruments_%s_%s.csv",
+		config.Mode,
+		time.Now().Format("20060102_150405"))
+	args = append(args, "--output", outputFile)
+
+	// Log the operation
+	log.Printf("Starting instrument update process with user: %s, mode: %s", username, config.Mode)
+
+	cmd := exec.Command("python3", append([]string{scriptPath}, args...)...)
+
+	// Execute command and get output
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Error fetching instruments: %v, Output: %s", err, string(output))
+		http.Error(w, fmt.Sprintf("Failed to fetch instruments: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if the output file exists
+	if _, err := os.Stat(outputFile); os.IsNotExist(err) {
+		http.Error(w, "Failed to generate instrument data file", http.StatusInternalServerError)
+		log.Printf("Error: Output file not created: %s", outputFile)
+		return
+	}
+
+	// Process the file in batches
+	log.Printf("Processing instrument data from file: %s", outputFile)
+
+	// Open the CSV file
+	file, err := os.Open(outputFile)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to open data file: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	// Parse CSV data
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		log.Printf("Failed to parse CSV data: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to parse instrument data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure we have at least a header row
+	if len(records) < 2 {
+		log.Printf("Insufficient CSV data received: %v rows", len(records))
+		http.Error(w, "Insufficient instrument data received", http.StatusInternalServerError)
+		return
+	}
+
+	// Get header row to map column indices
+	headers := records[0]
+	columnMap := make(map[string]int)
+	for i, header := range headers {
+		columnMap[header] = i
+	}
+
+	// Track counts for the whole process
+	totalCreated := 0
+	totalUpdated := 0
+	totalSkipped := 0
+
+	// Calculate total number of batches
+	dataRows := len(records) - 1 // Exclude header row
+	batchSize := config.BatchSize
+	if batchSize <= 0 {
+		batchSize = 500 // Fallback if invalid batch size provided
+	}
+
+	totalBatches := (dataRows + batchSize - 1) / batchSize // Ceiling division
+	log.Printf("Processing %d instruments in %d batches of size %d", dataRows, totalBatches, batchSize)
+
+	// Process in batches to avoid overwhelming the database
+	for batchNum := 0; batchNum < totalBatches; batchNum++ {
+		startIdx := batchNum*batchSize + 1 // +1 to skip header
+		endIdx := min((batchNum+1)*batchSize+1, len(records))
+
+		log.Printf("Processing batch %d/%d (rows %d-%d)", batchNum+1, totalBatches, startIdx, endIdx-1)
+
+		// Begin database transaction for this batch
+		tx := db.Begin()
+		if tx.Error != nil {
+			http.Error(w, fmt.Sprintf("Database error: %v", tx.Error), http.StatusInternalServerError)
+			return
+		}
+
+		// Track counts for this batch
+		created := 0
+		updated := 0
+		skipped := 0
+
+		// Process each row in this batch
+		for i := startIdx; i < endIdx; i++ {
+			row := records[i]
+
+			// Skip if row is too short
+			if len(row) < len(headers) {
+				skipped++
+				continue
+			}
+
+			// Create symbol object
+			var symbol Symbol
+			var symbolCode, symbolName, exchange, segment string
+
+			// Try to extract data using different column names based on format
+			// For compact format
+			if idx, ok := columnMap["SYMBOL"]; ok && idx < len(row) {
+				symbolCode = row[idx]
+			}
+
+			// For detailed format
+			if symbolCode == "" {
+				if idx, ok := columnMap["SEM_TRADING_SYMBOL"]; ok && idx < len(row) {
+					symbolCode = row[idx]
+				}
+			}
+
+			// Skip if no symbol code found
+			if symbolCode == "" {
+				skipped++
+				continue
+			}
+
+			// Get symbol name
+			if idx, ok := columnMap["SYMBOL_NAME"]; ok && idx < len(row) {
+				symbolName = row[idx]
+			} else if idx, ok := columnMap["SEM_CUSTOM_SYMBOL"]; ok && idx < len(row) {
+				symbolName = row[idx]
+			}
+
+			// Get exchange
+			if idx, ok := columnMap["EXCH_ID"]; ok && idx < len(row) {
+				exchange = row[idx]
+			} else if idx, ok := columnMap["SEM_EXM_EXCH_ID"]; ok && idx < len(row) {
+				exchange = row[idx]
+			}
+
+			// Get segment
+			if idx, ok := columnMap["SEGMENT"]; ok && idx < len(row) {
+				segment = row[idx]
+			} else if idx, ok := columnMap["SEM_SEGMENT"]; ok && idx < len(row) {
+				segment = row[idx]
+			}
+
+			// Determine type based on segment
+			segmentType := "OTHER"
+			if segment == "E" {
+				segmentType = "EQ"
+			} else if segment == "D" {
+				segmentType = "IDX"
+			} else if segment == "C" {
+				segmentType = "CUR"
+			} else if segment == "M" {
+				segmentType = "COMM"
+			}
+
+			// Set symbol fields
+			symbol.Symbol = symbolCode
+			symbol.Name = symbolName
+			symbol.Exchange = exchange
+			symbol.Type = segmentType
+
+			// Skip if there's a segment filter and it doesn't match
+			if config.ExchangeSegment != "" {
+				// Check if the exchange segment matches
+				fullSegment := exchange + "_" + segmentType
+				if !strings.Contains(strings.ToLower(fullSegment), strings.ToLower(config.ExchangeSegment)) {
+					skipped++
+					continue
+				}
+			}
+
+			// Try to find existing symbol
+			var existingSymbol Symbol
+			result := tx.Where("symbol = ?", symbol.Symbol).First(&existingSymbol)
+
+			// Update or create
+			if result.Error == nil {
+				existingSymbol.Name = symbol.Name
+				existingSymbol.Exchange = symbol.Exchange
+				existingSymbol.Type = symbol.Type
+
+				if err := tx.Save(&existingSymbol).Error; err != nil {
+					log.Printf("Error updating symbol %s: %v", symbol.Symbol, err)
+					tx.Rollback()
+					http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+					return
+				}
+				updated++
+			} else {
+				if err := tx.Create(&symbol).Error; err != nil {
+					log.Printf("Error creating symbol %s: %v", symbol.Symbol, err)
+					tx.Rollback()
+					http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+					return
+				}
+				created++
+			}
+		}
+
+		// Commit this batch's transaction
+		if err := tx.Commit().Error; err != nil {
+			http.Error(w, fmt.Sprintf("Failed to commit batch %d: %v", batchNum+1, err), http.StatusInternalServerError)
+			return
+		}
+
+		// Update totals
+		totalCreated += created
+		totalUpdated += updated
+		totalSkipped += skipped
+
+		log.Printf("Batch %d/%d completed: created=%d, updated=%d, skipped=%d",
+			batchNum+1, totalBatches, created, updated, skipped)
+	}
+
+	// Send success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "success",
+		"created":       totalCreated,
+		"updated":       totalUpdated,
+		"skipped":       totalSkipped,
+		"total":         totalCreated + totalUpdated + totalSkipped,
+		"total_batches": totalBatches,
+		"batch_size":    batchSize,
+		"time":          time.Now().Format(time.RFC3339),
+		"user":          username,
+		"mode":          config.Mode,
+	})
+
+	// Broadcast update to websocket clients
+	broadcast <- Message{
+		Type: "instruments_updated",
+		Content: map[string]interface{}{
+			"created":     totalCreated,
+			"updated":     totalUpdated,
+			"total":       totalCreated + totalUpdated,
+			"time":        time.Now(),
+			"mode":        config.Mode,
+			"user":        username,
+			"batch_count": totalBatches,
+		},
+	}
+
+	// Clean up temporary file if needed
+	if !config.SaveToFile {
+		os.Remove(outputFile)
+	}
+}
+
+// fetchDhanHQSegmentsHandler returns the available exchange segments from DhanHQ
+func fetchDhanHQSegmentsHandler(w http.ResponseWriter, r *http.Request) {
+	// Define the segments based on DhanHQ documentation
+	segments := []map[string]interface{}{
+		{"value": "NSE_EQ", "label": "NSE Equity"},
+		{"value": "BSE_EQ", "label": "BSE Equity"},
+		{"value": "NSE_FNO", "label": "NSE Futures & Options"},
+		{"value": "BSE_FNO", "label": "BSE Futures & Options"},
+		{"value": "MCX_COMM", "label": "MCX Commodities"},
+		{"value": "NSE_CURRENCY", "label": "NSE Currency"},
+		{"value": "BSE_CURRENCY", "label": "BSE Currency"},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(segments)
+}
+
+// DhanHQInstrumentUpdater handles updating instruments from DhanHQ API on a schedule
+type DhanHQInstrumentUpdater struct {
+	db        *gorm.DB
+	ticker    *time.Ticker
+	running   bool
+	stopCh    chan struct{}
+	mode      string
+	batchSize int
+}
+
+// NewDhanHQInstrumentUpdater creates a new instrument updater job
+func NewDhanHQInstrumentUpdater(db *gorm.DB) *DhanHQInstrumentUpdater {
+	return &DhanHQInstrumentUpdater{
+		db:        db,
+		stopCh:    make(chan struct{}),
+		mode:      "compact",
+		batchSize: 500,
+	}
+}
+
+// Start begins the instrument update job
+func (job *DhanHQInstrumentUpdater) Start() {
+	if job.running {
+		log.Println("DhanHQ instrument update job is already running")
+		return
+	}
+
+	job.running = true
+
+	// Run the job once at startup
+	go job.UpdateInstruments()
+
+	go func() {
+		for {
+			// Calculate time until next 3:00 AM - different time than symbol update
+			now := time.Now()
+			nextRun := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location())
+			if now.After(nextRun) {
+				// If it's already past 3:00 AM today, schedule for tomorrow
+				nextRun = nextRun.Add(24 * time.Hour)
+			}
+
+			waitDuration := nextRun.Sub(now)
+			log.Printf("DhanHQ instrument update job scheduled to run at 3:00 AM, waiting for %v", waitDuration)
+
+			// Create timer for next run
+			timer := time.NewTimer(waitDuration)
+
+			select {
+			case <-timer.C:
+				// Run the update job
+				job.UpdateInstruments()
+
+				// Continue the loop to schedule the next run
+				continue
+			case <-job.stopCh:
+				timer.Stop()
+				job.running = false
+				return
+			}
+		}
+	}()
+
+	log.Println("DhanHQ instrument update job started, will run daily at 3:00 AM")
+}
+
+// Stop terminates the instrument update job
+func (job *DhanHQInstrumentUpdater) Stop() {
+	if !job.running {
+		return
+	}
+	close(job.stopCh)
+	job.running = false
+	log.Println("DhanHQ instrument update job stopped")
+}
+
+// UpdateInstruments fetches and updates instruments from DhanHQ API
+func (job *DhanHQInstrumentUpdater) UpdateInstruments() {
+	log.Println("Running scheduled DhanHQ instrument update job")
+
+	outputFile := fmt.Sprintf("dhan_instruments_scheduled_%s.csv",
+		time.Now().Format("20060102"))
+
+	// Build command with appropriate arguments
+	args := []string{
+		"--mode", job.mode,
+		"--batch-size", fmt.Sprintf("%d", job.batchSize),
+		"--output", outputFile,
+	}
+
+	// Execute Python script to fetch instruments
+	cmd := exec.Command("python3", append([]string{"./update_instruments.py"}, args...)...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Error in scheduled instrument update: %v, Output: %s", err, string(output))
+		return
+	}
+
+	log.Printf("Instrument update script output: %s", string(output))
+
+	// Process the file in batches (similar to the handler)
+	file, err := os.Open(outputFile)
+	if err != nil {
+		log.Printf("Failed to open data file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	// Parse CSV data
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		log.Printf("Failed to parse CSV data: %v", err)
+		return
+	}
+
+	// Ensure we have data
+	if len(records) < 2 {
+		log.Printf("Insufficient CSV data received: %v rows", len(records))
+		return
+	}
+
+	// Get header row and create column map
+	headers := records[0]
+	columnMap := make(map[string]int)
+	for i, header := range headers {
+		columnMap[header] = i
+	}
+
+	// Calculate batches
+	dataRows := len(records) - 1
+	totalBatches := (dataRows + job.batchSize - 1) / job.batchSize
+	log.Printf("Processing %d instruments in %d batches", dataRows, totalBatches)
+
+	// Track counts
+	totalCreated := 0
+	totalUpdated := 0
+	totalSkipped := 0
+
+	// Process batches
+	for batchNum := 0; batchNum < totalBatches; batchNum++ {
+		startIdx := batchNum*job.batchSize + 1 // Skip header
+		endIdx := min((batchNum+1)*job.batchSize+1, len(records))
+
+		log.Printf("Processing batch %d/%d (rows %d-%d)", batchNum+1, totalBatches, startIdx, endIdx-1)
+
+		// Begin transaction
+		tx := job.db.Begin()
+		if tx.Error != nil {
+			log.Printf("Database error: %v", tx.Error)
+			return
+		}
+
+		// Process rows
+		created, updated, skipped := 0, 0, 0
+
+		for i := startIdx; i < endIdx; i++ {
+			row := records[i]
+
+			// Skip if row is too short
+			if len(row) < len(headers) {
+				skipped++
+				continue
+			}
+
+			// Extract symbol data using a helper function
+			symbol, ok := job.extractSymbolFromCSV(row, columnMap)
+			if !ok {
+				skipped++
+				continue
+			}
+
+			// Try to find existing symbol
+			var existingSymbol Symbol
+			result := tx.Where("symbol = ?", symbol.Symbol).First(&existingSymbol)
+
+			// Update or create
+			if result.Error == nil {
+				existingSymbol.Name = symbol.Name
+				existingSymbol.Exchange = symbol.Exchange
+				existingSymbol.Type = symbol.Type
+
+				if err := tx.Save(&existingSymbol).Error; err != nil {
+					log.Printf("Error updating symbol %s: %v", symbol.Symbol, err)
+					tx.Rollback()
+					return
+				}
+				updated++
+			} else {
+				if err := tx.Create(&symbol).Error; err != nil {
+					log.Printf("Error creating symbol %s: %v", symbol.Symbol, err)
+					tx.Rollback()
+					return
+				}
+				created++
+			}
+		}
+
+		// Commit transaction
+		if err := tx.Commit().Error; err != nil {
+			log.Printf("Failed to commit batch %d: %v", batchNum+1, err)
+			return
+		}
+
+		// Update totals
+		totalCreated += created
+		totalUpdated += updated
+		totalSkipped += skipped
+
+		log.Printf("Batch %d completed: created=%d, updated=%d, skipped=%d",
+			batchNum+1, created, updated, skipped)
+	}
+
+	// Cleanup
+	os.Remove(outputFile)
+
+	log.Printf("DhanHQ instrument update completed: created=%d, updated=%d, skipped=%d",
+		totalCreated, totalUpdated, totalSkipped)
+
+	// Broadcast update to websocket clients
+	broadcast <- Message{
+		Type: "instruments_updated",
+		Content: map[string]interface{}{
+			"created":   totalCreated,
+			"updated":   totalUpdated,
+			"total":     totalCreated + totalUpdated,
+			"time":      time.Now(),
+			"mode":      job.mode,
+			"scheduled": true,
+		},
+	}
+}
+
+// extractSymbolFromCSV extracts symbol data from a CSV row
+func (job *DhanHQInstrumentUpdater) extractSymbolFromCSV(row []string, columnMap map[string]int) (Symbol, bool) {
+	var symbol Symbol
+	var symbolCode, symbolName, exchange, segment string
+
+	// Try to extract data based on different CSV formats
+	// For compact format
+	if idx, ok := columnMap["SYMBOL"]; ok && idx < len(row) {
+		symbolCode = row[idx]
+	}
+
+	// For detailed format
+	if symbolCode == "" {
+		if idx, ok := columnMap["SEM_TRADING_SYMBOL"]; ok && idx < len(row) {
+			symbolCode = row[idx]
+		}
+	}
+
+	// Skip if no symbol code found
+	if symbolCode == "" {
+		return symbol, false
+	}
+
+	// Get symbol name
+	if idx, ok := columnMap["SYMBOL_NAME"]; ok && idx < len(row) {
+		symbolName = row[idx]
+	} else if idx, ok := columnMap["SEM_CUSTOM_SYMBOL"]; ok && idx < len(row) {
+		symbolName = row[idx]
+	}
+
+	// Get exchange
+	if idx, ok := columnMap["EXCH_ID"]; ok && idx < len(row) {
+		exchange = row[idx]
+	} else if idx, ok := columnMap["SEM_EXM_EXCH_ID"]; ok && idx < len(row) {
+		exchange = row[idx]
+	}
+
+	// Get segment
+	if idx, ok := columnMap["SEGMENT"]; ok && idx < len(row) {
+		segment = row[idx]
+	} else if idx, ok := columnMap["SEM_SEGMENT"]; ok && idx < len(row) {
+		segment = row[idx]
+	}
+
+	// Determine type based on segment
+	segmentType := "OTHER"
+	if segment == "E" {
+		segmentType = "EQ"
+	} else if segment == "D" {
+		segmentType = "IDX"
+	} else if segment == "C" {
+		segmentType = "CUR"
+	} else if segment == "M" {
+		segmentType = "COMM"
+	}
+
+	// Set symbol fields
+	symbol.Symbol = symbolCode
+	symbol.Name = symbolName
+	symbol.Exchange = exchange
+	symbol.Type = segmentType
+
+	return symbol, true
+}
+
 func main() {
 	// Initialize server configuration
 	config := initServerConfig()
@@ -1115,6 +1810,10 @@ func main() {
 	// Initialize symbol update job
 	symbolUpdateJob = NewSymbolUpdateJob(db)
 	symbolUpdateJob.Start()
+
+	// Initialize DhanHQ instrument update job
+	dhanInstrumentJob := NewDhanHQInstrumentUpdater(db)
+	dhanInstrumentJob.Start()
 
 	// Add health check endpoint
 	r.HandleFunc("/api/health", api.HealthHandler).Methods("GET")
@@ -1211,6 +1910,28 @@ func main() {
 
 	// Register symbol routes
 	symbolHandler.RegisterRoutes(authRouter)
+
+	// Initialize DhanHQ instrument service and handler
+	instrumentService := services.NewInstrumentService(db)
+	instrumentHandler := handlers.NewInstrumentHandler(instrumentService)
+
+	// Register instrument routes
+	instrumentHandler.RegisterRoutes(authRouter)
+
+	// Start scheduled instrument updates
+	instrumentUpdateStopCh := instrumentService.StartScheduledUpdates(services.ScheduledUpdateOptions{
+		Mode:         services.CompactMode,
+		BatchSize:    500,
+		HourOfDay:    3, // Run at 3 AM
+		MinuteOfHour: 0,
+	})
+
+	// Store stopCh for proper shutdown (not used yet but good practice)
+	_ = instrumentUpdateStopCh
+
+	// DhanHQ instrument routes
+	authRouter.HandleFunc("/dhanhq/instruments", fetchDhanHQInstrumentsHandler).Methods("POST")
+	authRouter.HandleFunc("/dhanhq/segments", fetchDhanHQSegmentsHandler).Methods("GET")
 
 	// Catch-all handler for serving the SPA
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

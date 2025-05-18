@@ -29,6 +29,8 @@ func (h *SymbolHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/symbols/{id:[0-9]+}", h.DeleteSymbol).Methods("DELETE")
 	router.HandleFunc("/symbols/import/dhan", h.ImportFromDhan).Methods("POST")
 	router.HandleFunc("/symbols/import/csv", h.ImportFromCSV).Methods("POST")
+	// Add autocomplete endpoint
+	router.HandleFunc("/symbols/autocomplete/underlying", h.AutocompleteUnderlyingSymbols).Methods("GET")
 }
 
 // GetSymbols returns a list of symbols with pagination and filtering
@@ -40,6 +42,8 @@ func (h *SymbolHandler) GetSymbols(w http.ResponseWriter, r *http.Request) {
 
 	// Create filter map
 	filter := make(map[string]string)
+
+	// Basic filters
 	if exchange := query.Get("exchange"); exchange != "" {
 		filter["exchange"] = exchange
 	}
@@ -53,6 +57,77 @@ func (h *SymbolHandler) GetSymbols(w http.ResponseWriter, r *http.Request) {
 		filter["active"] = active
 	}
 
+	// Instrument filters
+	if instrType := query.Get("instrument_type"); instrType != "" {
+		filter["instrument_type"] = instrType
+	}
+	if series := query.Get("series"); series != "" {
+		filter["series"] = series
+	}
+	if instrument := query.Get("instrument"); instrument != "" {
+		filter["instrument"] = instrument
+	}
+	if isin := query.Get("isin"); isin != "" {
+		filter["isin"] = isin
+	}
+	if securityId := query.Get("security_id"); securityId != "" {
+		filter["security_id"] = securityId
+	}
+	if underlyingSymbol := query.Get("underlying_symbol"); underlyingSymbol != "" {
+		filter["underlying_symbol"] = underlyingSymbol
+	}
+
+	// Options filters
+	if strikePrice := query.Get("strike_price"); strikePrice != "" {
+		filter["strike_price"] = strikePrice
+	}
+	if optionType := query.Get("option_type"); optionType != "" {
+		filter["option_type"] = optionType
+	}
+	if expiryFlag := query.Get("expiry_flag"); expiryFlag != "" {
+		filter["expiry_flag"] = expiryFlag
+	}
+
+	// Margin filters
+	if minMtf := query.Get("min_mtf"); minMtf != "" {
+		filter["min_mtf"] = minMtf
+	}
+	if maxMtf := query.Get("max_mtf"); maxMtf != "" {
+		filter["max_mtf"] = maxMtf
+	}
+	if lotSize := query.Get("lot_size"); lotSize != "" {
+		filter["lot_size"] = lotSize
+	}
+	if minLotSize := query.Get("min_lot_size"); minLotSize != "" {
+		filter["min_lot_size"] = minLotSize
+	}
+	if maxLotSize := query.Get("max_lot_size"); maxLotSize != "" {
+		filter["max_lot_size"] = maxLotSize
+	}
+
+	// Margin requirement filters
+	if minBuyCoMargin := query.Get("min_buy_co_margin"); minBuyCoMargin != "" {
+		filter["min_buy_co_margin"] = minBuyCoMargin
+	}
+	if minSellCoMargin := query.Get("min_sell_co_margin"); minSellCoMargin != "" {
+		filter["min_sell_co_margin"] = minSellCoMargin
+	}
+
+	// Sorting parameters
+	if sort := query.Get("sort"); sort != "" {
+		filter["sort"] = sort
+	} else {
+		// Default sort by MTF leverage if not specified
+		filter["sort"] = "mtf"
+	}
+
+	if order := query.Get("order"); order != "" {
+		filter["order"] = order
+	} else {
+		// Default to descending order for MTF
+		filter["order"] = "desc"
+	}
+
 	// Get symbols
 	symbols, count, err := h.symbolService.GetAllSymbols(filter, limit, offset)
 	if err != nil {
@@ -61,9 +136,25 @@ func (h *SymbolHandler) GetSymbols(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prepare response
+	// Handle pagination calculation with zero limit protection
+	page := 1
+	pages := int64(1)
+	pageSize := limit
+
+	if limit > 0 {
+		page = offset/limit + 1
+		pages = (count + int64(limit) - 1) / int64(limit)
+	} else if limit < 0 {
+		// Use default values for invalid limit
+		pageSize = 50 // Default page size
+	}
+
 	response := map[string]interface{}{
-		"symbols": symbols,
-		"count":   count,
+		"symbols":  symbols,
+		"count":    count,
+		"page":     page,
+		"pageSize": pageSize,
+		"pages":    pages,
 	}
 
 	// Return response
@@ -235,4 +326,29 @@ func (h *SymbolHandler) ImportFromCSV(w http.ResponseWriter, r *http.Request) {
 		"count":   count,
 		"source":  "CSV Upload",
 	})
+}
+
+// AutocompleteUnderlyingSymbols provides autocomplete suggestions for underlying symbols
+func (h *SymbolHandler) AutocompleteUnderlyingSymbols(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	query := r.URL.Query()
+	search := query.Get("search")
+
+	// Get autocomplete suggestions
+	suggestions, err := h.symbolService.GetUnderlyingSymbolSuggestions(search)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare a more structured response with metadata
+	response := map[string]interface{}{
+		"suggestions": suggestions,
+		"count":       len(suggestions),
+		"query":       search,
+	}
+
+	// Return response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
